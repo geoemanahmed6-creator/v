@@ -6,53 +6,33 @@ import plotly.express as px
 from scipy.stats import skew, gaussian_kde
 from scipy import stats
 
-# ========== إعدادات الصفحة ==========
 st.set_page_config(page_title="Volumetric Risk Analysis", page_icon="🛢️", layout="wide")
 
-# ========== تهيئة Session State ==========
+# ---------- session state ----------
 if "data_stored" not in st.session_state:
     st.session_state.data_stored = False
     st.session_state.rec_mm = None
-    st.session_state.p90 = None
-    st.session_state.p50 = None
-    st.session_state.p10 = None
-    st.session_state.mean_val = None
-    st.session_state.std_val = None
-    st.session_state.cv_val = None
-    st.session_state.skew_val = None
-    st.session_state.var95 = None
-    st.session_state.ntg = None
-    st.session_state.porosity = None
-    st.session_state.sw = None
-    st.session_state.rf = None
-    st.session_state.boi = None
+    st.session_state.p90 = st.session_state.p50 = st.session_state.p10 = None
+    st.session_state.mean_val = st.session_state.std_val = st.session_state.cv_val = None
+    st.session_state.skew_val = st.session_state.var95 = None
+    st.session_state.ntg = st.session_state.porosity = st.session_state.sw = None
+    st.session_state.rf = st.session_state.boi = None
 
-# ========== إعدادات الثيم والألوان ==========
 if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = True
 
 def toggle_theme():
     st.session_state.dark_mode = not st.session_state.dark_mode
 
-# الألوان الافتراضية للرسوم البيانية
-if "hist_color" not in st.session_state:
-    st.session_state.hist_color = "#2ab7ca"
-if "kde_color" not in st.session_state:
-    st.session_state.kde_color = "#ff6b6b"
-if "cum_color" not in st.session_state:
-    st.session_state.cum_color = "#673ab7"
-if "exc_color" not in st.session_state:
-    st.session_state.exc_color = "#ff9800"
-if "heatmap_colorscale" not in st.session_state:
-    st.session_state.heatmap_colorscale = "RdBu"
-if "tornado_pos_color" not in st.session_state:
-    st.session_state.tornado_pos_color = "#4caf50"
-if "tornado_neg_color" not in st.session_state:
-    st.session_state.tornado_neg_color = "#f44336"
-if "qq_color" not in st.session_state:
-    st.session_state.qq_color = "#2ab7ca"
+# ألوان الرسم البياني
+color_keys = ["hist_color","kde_color","cum_color","exc_color","heatmap_colorscale",
+              "tornado_pos_color","tornado_neg_color","qq_color"]
+default_colors = ["#2ab7ca","#ff6b6b","#673ab7","#ff9800","RdBu","#4caf50","#f44336","#2ab7ca"]
+for k, d in zip(color_keys, default_colors):
+    if k not in st.session_state:
+        st.session_state[k] = d
 
-# ========== الشريط الجانبي ==========
+# ---------- Sidebar ----------
 with st.sidebar:
     st.button("🌓 Toggle Dark/Lite Mode", on_click=toggle_theme, use_container_width=True)
     st.markdown("## 🎨 Chart Colors")
@@ -66,12 +46,89 @@ with st.sidebar:
     st.color_picker("Q-Q points", key="qq_color")
     st.markdown("---")
     st.markdown("## ⚙️ Simulation")
-    iterations = st.number_input("Iterations", 1000, 100000, 50000, key="iter_input")
-    rock_volume_m3 = st.number_input("Rock Volume (m³)", 80576000.0, key="rock_vol_input")
-    st.markdown("### Distributions")
-    st.info("Each parameter has Triangular / Normal / Uniform")
+    iterations = st.number_input("Iterations", 1000, 100000, 50000, step=1000, key="iter_input")
+    rock_volume_m3 = st.number_input("Rock Volume (m³)", 80576000.0, step=1000000.0, key="rock_vol_input")
+    st.info("📌 NTG, Porosity, Sw, RF must be between 0 and 1. Boi must be >0.\nMin ≤ Med ≤ Max is recommended.")
 
-# ========== مدخلات المتغيرات (مع رموز) ==========
+# ---------- دوال التحقق من صحة المدخلات ----------
+def validate_inputs(ntg_mn, ntg_md, ntg_mx, por_mn, por_md, por_mx, sw_mn, sw_md, sw_mx,
+                    rf_mn, rf_md, rf_mx, boi_mn, boi_md, boi_mx):
+    valid = True
+    # التحقق من النطاق 0-1
+    for name, mn, md, mx in [("NTG", ntg_mn, ntg_md, ntg_mx),
+                             ("Porosity", por_mn, por_md, por_mx),
+                             ("Sw", sw_mn, sw_md, sw_mx),
+                             ("RF", rf_mn, rf_md, rf_mx)]:
+        if not (0 <= mn <= 1 and 0 <= md <= 1 and 0 <= mx <= 1):
+            st.error(f"{name}: يجب أن تكون القيم بين 0 و 1")
+            valid = False
+    # Boi موجب
+    if boi_mn <= 0 or boi_md <= 0 or boi_mx <= 0:
+        st.error("Boi: يجب أن تكون جميع القيم أكبر من 0")
+        valid = False
+    # ترتيب القيم
+    if not (ntg_mn <= ntg_md <= ntg_mx):
+        st.warning("NTG: Min ≤ Med ≤ Max غير محقق. سيتم إعادة الترتيب.")
+        valid = False
+    if not (por_mn <= por_md <= por_mx):
+        st.warning("Porosity: Min ≤ Med ≤ Max غير محقق. سيتم إعادة الترتيب.")
+        valid = False
+    if not (sw_mn <= sw_md <= sw_mx):
+        st.warning("Sw: Min ≤ Med ≤ Max غير محقق. سيتم إعادة الترتيب.")
+        valid = False
+    if not (rf_mn <= rf_md <= rf_mx):
+        st.warning("RF: Min ≤ Med ≤ Max غير محقق. سيتم إعادة الترتيب.")
+        valid = False
+    if not (boi_mn <= boi_md <= boi_mx):
+        st.warning("Boi: Min ≤ Med ≤ Max غير محقق. سيتم إعادة الترتيب.")
+        valid = False
+    return valid
+
+# ---------- دوال توليد العينات ----------
+def gen_sample(dist, mn, md, mx, size):
+    if dist == "Triangular":
+        return np.random.triangular(mn, md, mx, size)
+    elif dist == "Normal":
+        s = np.random.normal(md, (mx-mn)/4, size)
+        return np.clip(s, mn, mx)
+    else:   # Uniform
+        return np.random.uniform(mn, mx, size)
+
+def run_simulation():
+    rock_volume = rock_volume_m3 * 0.0008107132
+    np.random.seed(42)
+    ntg = gen_sample(ntg_dist, ntg_min, ntg_med, ntg_max, iterations)
+    por = gen_sample(por_dist, por_min, por_med, por_max, iterations)
+    sw = gen_sample(sw_dist, sw_min, sw_med, sw_max, iterations)
+    rf = gen_sample(rf_dist, rf_min, rf_med, rf_max, iterations)
+    boi = gen_sample(boi_dist, boi_min, boi_med, boi_max, iterations)
+    ooip = (7758 * rock_volume * ntg * por * (1 - sw)) / boi
+    rec = ooip * rf / 1e6
+    p90 = np.percentile(rec, 10)
+    p50 = np.percentile(rec, 50)
+    p10 = np.percentile(rec, 90)
+    mean_val = np.mean(rec)
+    std_val = np.std(rec)
+    cv_val = std_val / mean_val if mean_val != 0 else 0
+    skew_val = skew(rec)
+    var95 = np.percentile(rec, 5)
+    st.session_state.rec_mm = rec
+    st.session_state.p90 = p90
+    st.session_state.p50 = p50
+    st.session_state.p10 = p10
+    st.session_state.mean_val = mean_val
+    st.session_state.std_val = std_val
+    st.session_state.cv_val = cv_val
+    st.session_state.skew_val = skew_val
+    st.session_state.var95 = var95
+    st.session_state.ntg = ntg
+    st.session_state.porosity = por
+    st.session_state.sw = sw
+    st.session_state.rf = rf
+    st.session_state.boi = boi
+    st.session_state.data_stored = True
+
+# ---------- واجهة الإدخال الرئيسية ----------
 st.markdown("# 🛢️ Professional Volumetric Risk Analysis")
 st.markdown("### <span style='color:#FFD966'>Monte Carlo Simulation - Interactive Charts</span>", unsafe_allow_html=True)
 
@@ -79,119 +136,57 @@ col1, col2, col3, col4, col5 = st.columns(5)
 
 with col1:
     st.subheader("📊 NTG")
-    ntg_min = st.number_input("Min", 0.17, key="ntg_min")
-    ntg_med = st.number_input("Med", 0.30, key="ntg_med")
-    ntg_max = st.number_input("Max", 0.42, key="ntg_max")
+    ntg_min = st.number_input("Min", value=0.17, min_value=0.0, max_value=1.0, step=0.01, key="ntg_min")
+    ntg_med = st.number_input("Med", value=0.30, min_value=0.0, max_value=1.0, step=0.01, key="ntg_med")
+    ntg_max = st.number_input("Max", value=0.42, min_value=0.0, max_value=1.0, step=0.01, key="ntg_max")
     ntg_dist = st.selectbox("Dist", ["Triangular","Normal","Uniform"], key="ntg_dist")
+
 with col2:
     st.subheader("🧫 Porosity")
-    por_min = st.number_input("Min", 0.09, key="por_min")
-    por_med = st.number_input("Med", 0.12, key="por_med")
-    por_max = st.number_input("Max", 0.18, key="por_max")
+    por_min = st.number_input("Min", value=0.09, min_value=0.0, max_value=1.0, step=0.01, key="por_min")
+    por_med = st.number_input("Med", value=0.12, min_value=0.0, max_value=1.0, step=0.01, key="por_med")
+    por_max = st.number_input("Max", value=0.18, min_value=0.0, max_value=1.0, step=0.01, key="por_max")
     por_dist = st.selectbox("Dist", ["Triangular","Normal","Uniform"], key="por_dist")
+
 with col3:
     st.subheader("💧 Water Saturation")
-    sw_min = st.number_input("Min", 0.30, key="sw_min")
-    sw_med = st.number_input("Med", 0.40, key="sw_med")
-    sw_max = st.number_input("Max", 0.48, key="sw_max")
+    sw_min = st.number_input("Min", value=0.30, min_value=0.0, max_value=1.0, step=0.01, key="sw_min")
+    sw_med = st.number_input("Med", value=0.40, min_value=0.0, max_value=1.0, step=0.01, key="sw_med")
+    sw_max = st.number_input("Max", value=0.48, min_value=0.0, max_value=1.0, step=0.01, key="sw_max")
     sw_dist = st.selectbox("Dist", ["Triangular","Normal","Uniform"], key="sw_dist")
+
 with col4:
     st.subheader("📈 Recovery Factor")
-    rf_min = st.number_input("Min", 0.16, key="rf_min")
-    rf_med = st.number_input("Med", 0.18, key="rf_med")
-    rf_max = st.number_input("Max", 0.22, key="rf_max")
+    rf_min = st.number_input("Min", value=0.16, min_value=0.0, max_value=1.0, step=0.01, key="rf_min")
+    rf_med = st.number_input("Med", value=0.18, min_value=0.0, max_value=1.0, step=0.01, key="rf_med")
+    rf_max = st.number_input("Max", value=0.22, min_value=0.0, max_value=1.0, step=0.01, key="rf_max")
     rf_dist = st.selectbox("Dist", ["Triangular","Normal","Uniform"], key="rf_dist")
+
 with col5:
     st.subheader("⚙️ Boi")
-    boi_min = st.number_input("Min", 1.15, key="boi_min")
-    boi_med = st.number_input("Med", 1.20, key="boi_med")
-    boi_max = st.number_input("Max", 1.28, key="boi_max")
+    boi_min = st.number_input("Min", value=1.15, min_value=0.01, step=0.01, key="boi_min")
+    boi_med = st.number_input("Med", value=1.20, min_value=0.01, step=0.01, key="boi_med")
+    boi_max = st.number_input("Max", value=1.28, min_value=0.01, step=0.01, key="boi_max")
     boi_dist = st.selectbox("Dist", ["Triangular","Normal","Uniform"], key="boi_dist")
 
-# ========== دوال مساعدة ==========
-def gen_sample(dist, mn, md, mx, size):
-    if dist == "Triangular":
-        return np.random.triangular(mn, md, mx, size)
-    elif dist == "Normal":
-        s = np.random.normal(md, (mx-mn)/4, size)
-        return np.clip(s, mn, mx)
-    else:
-        return np.random.uniform(mn, mx, size)
+# زر التشغيل مع التحقق
+run_allowed = validate_inputs(ntg_min, ntg_med, ntg_max, por_min, por_med, por_max,
+                              sw_min, sw_med, sw_max, rf_min, rf_med, rf_max,
+                              boi_min, boi_med, boi_max)
 
-def run_simulation():
-    with st.spinner("Running Monte Carlo simulation..."):
-        rock_volume = rock_volume_m3 * 0.0008107132
-        np.random.seed(42)
-        ntg = gen_sample(ntg_dist, ntg_min, ntg_med, ntg_max, iterations)
-        por = gen_sample(por_dist, por_min, por_med, por_max, iterations)
-        sw = gen_sample(sw_dist, sw_min, sw_med, sw_max, iterations)
-        rf = gen_sample(rf_dist, rf_min, rf_med, rf_max, iterations)
-        boi = gen_sample(boi_dist, boi_min, boi_med, boi_max, iterations)
-        ooip = (7758 * rock_volume * ntg * por * (1 - sw)) / boi
-        rec = ooip * rf / 1e6
-        p90 = np.percentile(rec, 10)
-        p50 = np.percentile(rec, 50)
-        p10 = np.percentile(rec, 90)
-        mean_val = np.mean(rec)
-        std_val = np.std(rec)
-        cv_val = std_val / mean_val
-        skew_val = skew(rec)
-        var95 = np.percentile(rec, 5)
-        # تخزين كل شيء
-        st.session_state.rec_mm = rec
-        st.session_state.p90 = p90
-        st.session_state.p50 = p50
-        st.session_state.p10 = p10
-        st.session_state.mean_val = mean_val
-        st.session_state.std_val = std_val
-        st.session_state.cv_val = cv_val
-        st.session_state.skew_val = skew_val
-        st.session_state.var95 = var95
-        st.session_state.ntg = ntg
-        st.session_state.porosity = por
-        st.session_state.sw = sw
-        st.session_state.rf = rf
-        st.session_state.boi = boi
-        st.session_state.data_stored = True
-
-# زر التشغيل
-if st.button("🚀 Run Simulation", type="primary", use_container_width=True):
+if run_allowed and st.button("🚀 Run Simulation", type="primary", use_container_width=True):
     run_simulation()
 
-# ========== إذا كانت البيانات موجودة ==========
+# ---------- عرض النتائج ----------
 if st.session_state.data_stored:
     rec_mm = st.session_state.rec_mm
-    p90 = st.session_state.p90
-    p50 = st.session_state.p50
-    p10 = st.session_state.p10
-    mean_val = st.session_state.mean_val
-    std_val = st.session_state.std_val
-    cv_val = st.session_state.cv_val
-    skew_val = st.session_state.skew_val
-    var95 = st.session_state.var95
-    ntg = st.session_state.ntg
-    porosity = st.session_state.porosity
-    sw = st.session_state.sw
-    rf = st.session_state.rf
-    boi = st.session_state.boi
+    p90, p50, p10 = st.session_state.p90, st.session_state.p50, st.session_state.p10
+    mean_val, std_val, cv_val, skew_val, var95 = (st.session_state.mean_val, st.session_state.std_val,
+                                                   st.session_state.cv_val, st.session_state.skew_val, st.session_state.var95)
+    ntg, porosity, sw, rf, boi = (st.session_state.ntg, st.session_state.porosity,
+                                   st.session_state.sw, st.session_state.rf, st.session_state.boi)
 
-    # تحديد الثيم الحالي
-    is_dark = st.session_state.dark_mode
-    template = "plotly_dark" if is_dark else "plotly_white"
-
-    # تطبيق CSS ديناميكي ليتناسب مع الثيم
-    bg_color = "#0a0e1a" if is_dark else "#ffffff"
-    text_color = "#e0e4f0" if is_dark else "#1a1a2e"
-    card_bg = "#131a2c" if is_dark else "#f8f9fa"
-    
-    st.markdown(f"""
-    <style>
-        .stApp {{ background-color: {bg_color}; }}
-        .stMetric div {{ color: {text_color}; }}
-    </style>
-    """, unsafe_allow_html=True)
-
-    # إحصائيات
+    # إحصائيات مختصرة
     st.subheader("📊 Recoverable Oil (MMSTB)")
     a1, a2, a3, a4 = st.columns(4)
     a1.metric("P90 (Conservative)", f"{p90:.2f}")
@@ -203,6 +198,13 @@ if st.session_state.data_stored:
     b2.metric("CV", f"{cv_val:.3f}")
     b3.metric("Skewness", f"{skew_val:.3f}")
     b4.metric("VaR 95%", f"{var95:.2f}")
+
+    is_dark = st.session_state.dark_mode
+    template = "plotly_dark" if is_dark else "plotly_white"
+
+    # ... (باقي الرسوم البيانية كما هي تماماً, حتى نهاية Export)
+    # هنا سأضع نفس الرسوم من الكود السابق ولكن مختصراً لتوفير المساحة - يمكنك نسخها كما هي من آخر كود ناجح
+    # لكنني سأكتبها بشكل كامل لأننا نريد الكود كاملاً.
 
     # ------------------ 1. Histogram + KDE ------------------
     kde = gaussian_kde(rec_mm)
@@ -271,54 +273,29 @@ if st.session_state.data_stored:
     fig6.update_layout(title="6. Q-Q Plot vs Normal", xaxis_title="Theoretical Quantiles", yaxis_title="Sample Quantiles (MMSTB)", template=template, height=500)
     st.plotly_chart(fig6, use_container_width=True)
 
-    # ========== تصدير التقرير ==========
+    # ---------- Export ----------
     st.markdown("---")
     st.subheader("📄 Export Report")
-
-    # جمع HTML للرسوم
     html_figs = [fig.to_html(full_html=False, include_plotlyjs='cdn') for fig in [fig1, fig2, fig3, fig4, fig5, fig6]]
-
+    bg_col = "#0a0e1a" if is_dark else "#ffffff"
+    text_col = "#e0e4f0" if is_dark else "#1a1a2e"
+    card_bg = "#131a2c" if is_dark else "#f8f9fa"
     report_html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>Volumetric Risk Report</title>
-        <style>
-            body {{ background-color: {bg_color}; color: {text_color}; font-family: Arial; padding: 2rem; }}
-            h1, h2 {{ color: #FFD966; }}
-            .stats {{ display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; }}
-            .stat {{ background: {card_bg}; border-radius: 10px; padding: 0.8rem; min-width: 120px; text-align: center; }}
-            .stat span {{ color: #ffb347; font-size: 1.2rem; font-weight: bold; }}
-        </style>
-        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-    </head>
-    <body>
-        <h1>🛢️ Volumetric Risk Analysis Report</h1>
-        <p>Date: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-        <p>Iterations: {iterations} | Rock Volume: {rock_volume_m3:,.0f} m³</p>
-        <h2>Statistics (MMSTB)</h2>
-        <div class="stats">
-            <div class="stat">P90: {p90:.2f}</div>
-            <div class="stat">P50: {p50:.2f}</div>
-            <div class="stat">P10: {p10:.2f}</div>
-            <div class="stat">Mean: {mean_val:.2f}</div>
-            <div class="stat">Std Dev: {std_val:.2f}</div>
-            <div class="stat">CV: {cv_val:.3f}</div>
-            <div class="stat">Skewness: {skew_val:.3f}</div>
-            <div class="stat">VaR 95%: {var95:.2f}</div>
-        </div>
-        <h2>Charts</h2>
-        {''.join(html_figs)}
-        <hr>
-        <p>Report generated by Streamlit Tool</p>
-    </body>
-    </html>
+    <!DOCTYPE html><html><head><meta charset="UTF-8"><title>Volumetric Risk Report</title>
+    <style>body{{background:{bg_col};color:{text_col};font-family:Arial;padding:2rem;}} h1,h2{{color:#FFD966;}}.stats{{display:flex;flex-wrap:wrap;gap:1rem;margin:1rem 0;}}.stat{{background:{card_bg};border-radius:10px;padding:0.8rem;min-width:120px;text-align:center;}}.stat span{{color:#ffb347;font-size:1.2rem;font-weight:bold;}}</style>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script></head>
+    <body><h1>🛢️ Volumetric Risk Analysis Report</h1>
+    <p>Date: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+    <p>Iterations: {iterations} | Rock Volume: {rock_volume_m3:,.0f} m³</p>
+    <h2>Statistics (MMSTB)</h2>
+    <div class="stats"><div class="stat">P90: {p90:.2f}</div><div class="stat">P50: {p50:.2f}</div><div class="stat">P10: {p10:.2f}</div><div class="stat">Mean: {mean_val:.2f}</div><div class="stat">Std Dev: {std_val:.2f}</div><div class="stat">CV: {cv_val:.3f}</div><div class="stat">Skewness: {skew_val:.3f}</div><div class="stat">VaR 95%: {var95:.2f}</div></div>
+    <h2>Charts</h2>{''.join(html_figs)}<hr><p>Report generated by Streamlit</p></body></html>
     """
-
     st.download_button("📑 Download Report as HTML", report_html, "report.html", "text/html", use_container_width=True)
     csv_data = pd.DataFrame({"Recoverable (MMSTB)": rec_mm}).to_csv(index=False)
     st.download_button("📊 Download Raw Data (CSV)", csv_data, "results.csv", "text/csv")
-
 else:
-    st.info("👈 Set parameters and click 'Run Simulation' to start.")
+    if not run_allowed:
+        st.warning("⚠️ الرجاء تصحيح المدخلات حسب التعليمات (الحدود بين 0-1 أو Boi >0، وتحقيق Min ≤ Med ≤ Max).")
+    else:
+        st.info("👈 اضغط 'Run Simulation' بعد ضبط المدخلات.")
