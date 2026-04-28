@@ -47,15 +47,14 @@ with st.sidebar:
     st.color_picker("Q-Q points", key="qq_color")
     st.markdown("---")
     st.markdown("## ⚙️ Simulation")
-    iterations = st.number_input("Iterations", 1000, 100000, 50000, step=1000, key="iter_input")
-    rock_volume_m3 = st.number_input("Rock Volume (m³)", 80576000.0, step=1000000.0, key="rock_vol_input")
+    iterations = st.number_input("Iterations", min_value=1000, max_value=100000, value=50000, step=1000, key="iter_input")
+    rock_volume_m3 = st.number_input("Rock Volume (m³)", value=80576000.0, step=1000000.0, key="rock_vol_input")
     st.info("📌 NTG, Porosity, Sw, RF must be between 0 and 1. Boi > 0. Min ≤ Med ≤ Max is recommended.")
 
 # ========== دوال التحقق ==========
 def validate_inputs(ntg_mn, ntg_md, ntg_mx, por_mn, por_md, por_mx, sw_mn, sw_md, sw_mx,
                     rf_mn, rf_md, rf_mx, boi_mn, boi_md, boi_mx):
     valid = True
-    # الفحص 0-1
     for name, mn, md, mx in [("NTG", ntg_mn, ntg_md, ntg_mx),
                              ("Porosity", por_mn, por_md, por_mx),
                              ("Sw", sw_mn, sw_md, sw_mx),
@@ -66,7 +65,6 @@ def validate_inputs(ntg_mn, ntg_md, ntg_mx, por_mn, por_md, por_mx, sw_mn, sw_md
     if boi_mn <= 0 or boi_md <= 0 or boi_mx <= 0:
         st.error("Boi: all values must be greater than 0.")
         valid = False
-    # تحذيرات الترتيب (لا تمنع التشغيل)
     if not (ntg_mn <= ntg_md <= ntg_mx):
         st.warning("NTG: Min ≤ Med ≤ Max not satisfied. Consider adjusting.")
     if not (por_mn <= por_md <= por_mx):
@@ -116,7 +114,7 @@ def run_simulation():
     st.session_state.sw, st.session_state.rf, st.session_state.boi = sw, rf, boi
     st.session_state.data_stored = True
 
-# ========== واجهة الإدخال الرئيسية ==========
+# ========== واجهة الإدخال الرئيسية (بإصلاح st.number_input) ==========
 st.markdown("# 🛢️ Professional Volumetric Risk Analysis")
 st.markdown("### <span style='color:#FFD966'>Monte Carlo Simulation - Interactive Charts</span>", unsafe_allow_html=True)
 
@@ -124,37 +122,37 @@ col1, col2, col3, col4, col5 = st.columns(5)
 
 with col1:
     st.subheader("📊 NTG")
-    ntg_min = st.number_input("Min", 0.17, min_value=0.0, max_value=1.0, step=0.01, key="ntg_min")
-    ntg_med = st.number_input("Med", 0.30, min_value=0.0, max_value=1.0, step=0.01, key="ntg_med")
-    ntg_max = st.number_input("Max", 0.42, min_value=0.0, max_value=1.0, step=0.01, key="ntg_max")
+    ntg_min = st.number_input("Min", value=0.17, min_value=0.0, max_value=1.0, step=0.01, key="ntg_min")
+    ntg_med = st.number_input("Med", value=0.30, min_value=0.0, max_value=1.0, step=0.01, key="ntg_med")
+    ntg_max = st.number_input("Max", value=0.42, min_value=0.0, max_value=1.0, step=0.01, key="ntg_max")
     ntg_dist = st.selectbox("Dist", ["Triangular","Normal","Uniform"], key="ntg_dist")
 
 with col2:
     st.subheader("🧫 Porosity")
-    por_min = st.number_input("Min", 0.09, min_value=0.0, max_value=1.0, step=0.01, key="por_min")
-    por_med = st.number_input("Med", 0.12, min_value=0.0, max_value=1.0, step=0.01, key="por_med")
-    por_max = st.number_input("Max", 0.18, min_value=0.0, max_value=1.0, step=0.01, key="por_max")
+    por_min = st.number_input("Min", value=0.09, min_value=0.0, max_value=1.0, step=0.01, key="por_min")
+    por_med = st.number_input("Med", value=0.12, min_value=0.0, max_value=1.0, step=0.01, key="por_med")
+    por_max = st.number_input("Max", value=0.18, min_value=0.0, max_value=1.0, step=0.01, key="por_max")
     por_dist = st.selectbox("Dist", ["Triangular","Normal","Uniform"], key="por_dist")
 
 with col3:
     st.subheader("💧 Water Saturation")
-    sw_min = st.number_input("Min", 0.30, min_value=0.0, max_value=1.0, step=0.01, key="sw_min")
-    sw_med = st.number_input("Med", 0.40, min_value=0.0, max_value=1.0, step=0.01, key="sw_med")
-    sw_max = st.number_input("Max", 0.48, min_value=0.0, max_value=1.0, step=0.01, key="sw_max")
+    sw_min = st.number_input("Min", value=0.30, min_value=0.0, max_value=1.0, step=0.01, key="sw_min")
+    sw_med = st.number_input("Med", value=0.40, min_value=0.0, max_value=1.0, step=0.01, key="sw_med")
+    sw_max = st.number_input("Max", value=0.48, min_value=0.0, max_value=1.0, step=0.01, key="sw_max")
     sw_dist = st.selectbox("Dist", ["Triangular","Normal","Uniform"], key="sw_dist")
 
 with col4:
     st.subheader("📈 Recovery Factor")
-    rf_min = st.number_input("Min", 0.16, min_value=0.0, max_value=1.0, step=0.01, key="rf_min")
-    rf_med = st.number_input("Med", 0.18, min_value=0.0, max_value=1.0, step=0.01, key="rf_med")
-    rf_max = st.number_input("Max", 0.22, min_value=0.0, max_value=1.0, step=0.01, key="rf_max")
+    rf_min = st.number_input("Min", value=0.16, min_value=0.0, max_value=1.0, step=0.01, key="rf_min")
+    rf_med = st.number_input("Med", value=0.18, min_value=0.0, max_value=1.0, step=0.01, key="rf_med")
+    rf_max = st.number_input("Max", value=0.22, min_value=0.0, max_value=1.0, step=0.01, key="rf_max")
     rf_dist = st.selectbox("Dist", ["Triangular","Normal","Uniform"], key="rf_dist")
 
 with col5:
     st.subheader("⚙️ Boi")
-    boi_min = st.number_input("Min", 1.15, min_value=0.01, step=0.01, key="boi_min")
-    boi_med = st.number_input("Med", 1.20, min_value=0.01, step=0.01, key="boi_med")
-    boi_max = st.number_input("Max", 1.28, min_value=0.01, step=0.01, key="boi_max")
+    boi_min = st.number_input("Min", value=1.15, min_value=0.01, step=0.01, key="boi_min")
+    boi_med = st.number_input("Med", value=1.20, min_value=0.01, step=0.01, key="boi_med")
+    boi_max = st.number_input("Max", value=1.28, min_value=0.01, step=0.01, key="boi_max")
     boi_dist = st.selectbox("Dist", ["Triangular","Normal","Uniform"], key="boi_dist")
 
 if st.button("🚀 Run Simulation", type="primary", use_container_width=True):
@@ -176,7 +174,6 @@ if st.session_state.data_stored:
 
     # ========== كاردات جذابة بتصميم عصري ==========
     st.subheader("📊 Recoverable Oil (MMSTB)")
-    # CSS للكاردات
     is_dark = st.session_state.dark_mode
     card_bg_gradient = "linear-gradient(145deg, #1e2a3a, #0f1622)" if is_dark else "linear-gradient(145deg, #ffffff, #f0f2f5)"
     card_text_color = "#ffb347"
@@ -211,7 +208,6 @@ if st.session_state.data_stored:
     </style>
     """, unsafe_allow_html=True)
 
-    # عرض الكاردات في 4 أعمدة
     col_a, col_b, col_c, col_d = st.columns(4)
     with col_a:
         st.markdown(f'<div class="metric-card"><div class="metric-label">P90 (Conservative)</div><div class="metric-value">{p90:.2f}</div></div>', unsafe_allow_html=True)
@@ -222,7 +218,6 @@ if st.session_state.data_stored:
     with col_d:
         st.markdown(f'<div class="metric-card"><div class="metric-label">Mean</div><div class="metric-value">{mean_val:.2f}</div></div>', unsafe_allow_html=True)
 
-    # الصف الثاني من الكاردات
     col_e, col_f, col_g, col_h = st.columns(4)
     with col_e:
         st.markdown(f'<div class="metric-card"><div class="metric-label">Std Dev</div><div class="metric-value">{std_val:.2f}</div></div>', unsafe_allow_html=True)
@@ -233,13 +228,22 @@ if st.session_state.data_stored:
     with col_h:
         st.markdown(f'<div class="metric-card"><div class="metric-label">VaR 95%</div><div class="metric-value">{var95:.2f}</div></div>', unsafe_allow_html=True)
 
-    # ========== الرسوم البيانية (كما هي) ==========
+    # ========== الرسوم البيانية (مع معالجة خطأ KDE) ==========
     template = "plotly_dark" if is_dark else "plotly_white"
 
+    # معالجة حالة البيانات الثابتة (std=0) لتجنب انهيار gaussian_kde
+    if np.std(rec_mm) == 0:
+        rec_mm_kde = rec_mm + np.random.normal(0, 1e-6, len(rec_mm))
+    else:
+        rec_mm_kde = rec_mm
+
     # 1. Histogram + KDE
-    kde = gaussian_kde(rec_mm)
-    xr = np.linspace(rec_mm.min(), rec_mm.max(), 200)
-    kde_vals = kde(xr) * len(rec_mm) * (xr[1]-xr[0])
+    try:
+        kde = gaussian_kde(rec_mm_kde)
+        xr = np.linspace(rec_mm.min(), rec_mm.max(), 200)
+        kde_vals = kde(xr) * len(rec_mm) * (xr[1]-xr[0])
+    except:
+        kde_vals = np.zeros_like(xr)
     fig1 = go.Figure()
     fig1.add_trace(go.Histogram(x=rec_mm, nbinsx=80, name="Frequency",
                                 marker=dict(color=st.session_state.hist_color, line=dict(color='white', width=0.5), opacity=0.7)))
@@ -307,12 +311,12 @@ if st.session_state.data_stored:
     st.markdown("---")
     st.subheader("📄 Export Report")
     html_figs = [fig.to_html(full_html=False, include_plotlyjs='cdn') for fig in [fig1, fig2, fig3, fig4, fig5, fig6]]
-    bg_color = "#0a0e1a" if is_dark else "#ffffff"
-    text_color = "#e0e4f0" if is_dark else "#1a1a2e"
+    bg_color_html = "#0a0e1a" if is_dark else "#ffffff"
+    text_color_html = "#e0e4f0" if is_dark else "#1a1a2e"
     card_bg_html = "#131a2c" if is_dark else "#f8f9fa"
     report_html = f"""
     <!DOCTYPE html><html><head><meta charset="UTF-8"><title>Volumetric Risk Report</title>
-    <style>body{{background:{bg_color};color:{text_color};font-family:Arial;padding:2rem;}} h1,h2{{color:#FFD966;}}.stats{{display:flex;flex-wrap:wrap;gap:1rem;margin:1rem 0;}}.stat{{background:{card_bg_html};border-radius:10px;padding:0.8rem;min-width:120px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1);}}.stat span{{color:#ffb347;font-size:1.2rem;font-weight:bold;}}</style>
+    <style>body{{background:{bg_color_html};color:{text_color_html};font-family:Arial;padding:2rem;}} h1,h2{{color:#FFD966;}}.stats{{display:flex;flex-wrap:wrap;gap:1rem;margin:1rem 0;}}.stat{{background:{card_bg_html};border-radius:10px;padding:0.8rem;min-width:120px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1);}}.stat span{{color:#ffb347;font-size:1.2rem;font-weight:bold;}}</style>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script></head>
     <body><h1>🛢️ Volumetric Risk Analysis Report</h1>
     <p>Date: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
@@ -326,4 +330,4 @@ if st.session_state.data_stored:
     st.download_button("📊 Download Raw Data (CSV)", csv_data, "results.csv", "text/csv")
 else:
     if not st.session_state.data_stored:
-        st.info("👈 Set parameters and click 'Run Simulation' to start.")
+        st.info("👈 Click 'Run Simulation' after setting parameters.")
