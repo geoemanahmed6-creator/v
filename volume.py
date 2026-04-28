@@ -24,7 +24,7 @@ if "dark_mode" not in st.session_state:
 def toggle_theme():
     st.session_state.dark_mode = not st.session_state.dark_mode
 
-# ألوان افتراضية
+# الألوان الافتراضية للرسوم البيانية (نفسها)
 color_keys = ["hist_color","kde_color","cum_color","exc_color","heatmap_colorscale",
               "tornado_pos_color","tornado_neg_color","qq_color"]
 default_colors = ["#2ab7ca","#ff6b6b","#673ab7","#ff9800","RdBu","#4caf50","#f44336","#2ab7ca"]
@@ -49,7 +49,116 @@ with st.sidebar:
     iterations = st.number_input("Iterations", min_value=1000, max_value=100000, value=50000, step=1000, key="iter_input")
     st.info("📌 Distributions: Triangular, Normal, Uniform, Lognormal, PERT")
 
-# ========== دوال التوزيعات ==========
+# ========== CSS لتحسين المظهر وتوحيد الخانات ==========
+def apply_custom_css(is_dark):
+    # اختيار الألوان حسب الوضع
+    if is_dark:
+        bg_color = "#0a0e1a"
+        text_color = "#e0e4f0"
+        input_bg = "#1e2a3a"
+        input_border = "#2e3b4e"
+        label_color = "#ffb347"
+        card_bg = "linear-gradient(145deg, #1e2a3a, #0f1622)"
+        yellow_bright = "#ffcc00"  # أصفر أكثر إشراقًا للدارك
+    else:
+        bg_color = "#ffffff"
+        text_color = "#1a1a2e"
+        input_bg = "#f8f9fa"
+        input_border = "#ced4da"
+        label_color = "#e67e22"  # برتقالي-أصفر غامق للخلفية البيضاء
+        card_bg = "linear-gradient(145deg, #f8f9fa, #e9ecef)"
+        yellow_bright = "#f1c40f"  # أصفر فاتح لكن واضح
+
+    st.markdown(f"""
+    <style>
+        /* تنسيق عام */
+        .stApp {{ background-color: {bg_color}; }}
+        .stMarkdown, .stSubheader, .stTitle {{ color: {text_color}; }}
+        
+        /* خانات الإدخال - توحيد العرض والارتفاع */
+        .stNumberInput input, .stSelectbox select {{
+            background-color: {input_bg};
+            color: {text_color};
+            border-color: {input_border};
+            border-radius: 8px;
+            padding: 0.5rem;
+            font-size: 0.9rem;
+            width: 100%;
+            transition: 0.2s;
+        }}
+        .stNumberInput input:focus, .stSelectbox select:focus {{
+            border-color: {yellow_bright};
+            box-shadow: 0 0 5px {yellow_bright};
+        }}
+        
+        /* عناوين الأعمدة (مثل 📊 NTG) */
+        .stSubheader {{
+            font-size: 1.1rem !important;
+            font-weight: 600 !important;
+            color: {yellow_bright} !important;
+            margin-bottom: 0.5rem !important;
+        }}
+        
+        /* تنسيق التبويبات والأزرار */
+        .stButton button {{
+            background-color: {yellow_bright};
+            color: #1a1a2e !important;
+            font-weight: bold;
+            border-radius: 30px;
+            border: none;
+            padding: 0.5rem 1rem;
+            transition: 0.2s;
+        }}
+        .stButton button:hover {{
+            background-color: #e67e22;
+            color: white !important;
+            transform: scale(1.02);
+        }}
+        
+        /* بطاقات النتائج (إذا تم استخدامها) */
+        .metric-card {{
+            background: {card_bg};
+            border-radius: 20px;
+            padding: 1rem 0.5rem;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transition: 0.2s;
+            border: 1px solid rgba(241,196,15,0.4);
+        }}
+        .metric-card:hover {{
+            transform: translateY(-4px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+        }}
+        .metric-label {{
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: {text_color};
+            opacity: 0.8;
+            margin-bottom: 0.4rem;
+        }}
+        .metric-value {{
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: {yellow_bright};
+            line-height: 1.2;
+        }}
+        
+        /* تحسين مظهر القوائم المنسدلة */
+        .stSelectbox div[data-baseweb="select"] {{
+            background-color: {input_bg};
+            border-radius: 8px;
+        }}
+        
+        /* جعل الأعمدة متساوية الارتفاع */
+        .stColumn {{
+            background-color: rgba(0,0,0,0);
+            padding: 0.5rem;
+            border-radius: 12px;
+        }}
+    </style>
+    """, unsafe_allow_html=True)
+
+# دوال التوزيعات (كما هي)
 def triangular_sample(mn, md, mx, size):
     return np.random.triangular(mn, md, mx, size)
 
@@ -88,7 +197,7 @@ def gen_sample(dist, mn, md, mx, size):
     else:
         return triangular_sample(mn, md, mx, size)
 
-# ========== التحقق ==========
+# دوال التحقق (كما هي)
 def validate_inputs(rock_mn, rock_md, rock_mx, ntg_mn, ntg_md, ntg_mx,
                     por_mn, por_md, por_mx, sw_mn, sw_md, sw_mx,
                     rf_mn, rf_md, rf_mx, boi_mn, boi_md, boi_mx):
@@ -151,6 +260,7 @@ st.markdown("### <span style='color:#FFD966'>Monte Carlo Simulation - Interactiv
 
 dist_options = ["Triangular", "Normal", "Uniform", "Lognormal", "PERT"]
 
+# الأعمدة (6 أعمدة) - كل عمود يحتوي على نفس التنسيق
 col1, col2, col3, col4, col5, col6 = st.columns(6)
 with col1:
     st.subheader("🗻 Rock Volume")
@@ -200,7 +310,10 @@ if st.button("🚀 Run Simulation", type="primary", use_container_width=True):
     else:
         st.error("Please fix input errors.")
 
-# ========== عرض النتائج ==========
+# ========== عرض النتائج والرسوم البيانية (مع تطبيق الـ CSS ديناميكيًا) ==========
+# نطبق الـ CSS حسب الثيم الحالي
+apply_custom_css(st.session_state.dark_mode)
+
 if st.session_state.data_stored:
     rec = st.session_state.rec_mm
     p90, p50, p10 = st.session_state.p90, st.session_state.p50, st.session_state.p10
@@ -213,39 +326,20 @@ if st.session_state.data_stored:
     is_dark = st.session_state.dark_mode
     template = "plotly_dark" if is_dark else "plotly_white"
 
-    # كاردات النتائج
+    # كاردات النتائج (باستخدام الـ CSS المُطبق)
     st.subheader("📊 Recoverable Oil (MMSTB)")
-    card_bg = "linear-gradient(145deg, #1e2a3a, #0f1622)" if is_dark else "linear-gradient(145deg, #ffffff, #f0f2f5)"
-    st.markdown(f"""
-    <style>
-    .metric-card {{
-        background: {card_bg};
-        border-radius: 16px;
-        padding: 1rem 0.5rem;
-        text-align: center;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-        transition: 0.2s;
-        border: 1px solid rgba(255,179,71,0.3);
-    }}
-    .metric-card:hover {{ transform: translateY(-3px); }}
-    .metric-label {{ font-size: 0.75rem; color: #d1d5db; margin-bottom: 0.3rem; }}
-    .metric-value {{ font-size: 1.4rem; font-weight: 700; color: #ffb347; }}
-    </style>
-    """, unsafe_allow_html=True)
-
     cols = st.columns(4)
     vals = [f"P90: {p90:.2f}", f"P50: {p50:.2f}", f"P10: {p10:.2f}", f"Mean: {mn:.2f}"]
     for i, v in enumerate(vals):
         label, val = v.split(":")
         cols[i].markdown(f'<div class="metric-card"><div class="metric-label">{label}</div><div class="metric-value">{val}</div></div>', unsafe_allow_html=True)
-
     cols2 = st.columns(4)
     vals2 = [f"Std Dev: {sd:.2f}", f"CV: {cv:.3f}", f"Skewness: {sk:.3f}", f"VaR 95%: {v95:.2f}"]
     for i, v in enumerate(vals2):
         label, val = v.split(":")
         cols2[i].markdown(f'<div class="metric-card"><div class="metric-label">{label}</div><div class="metric-value">{val}</div></div>', unsafe_allow_html=True)
 
-    # الرسوم البيانية
+    # الرسوم البيانية (نفسها تمامًا)
     if np.std(rec) == 0:
         rec_kde = rec + np.random.normal(0, 1e-6, len(rec))
     else:
@@ -314,7 +408,7 @@ if st.session_state.data_stored:
     fig6.update_layout(title="6. Q-Q Plot vs Normal", template=template, height=500)
     st.plotly_chart(fig6, use_container_width=True)
 
-    # تصدير
+    # Export Section
     st.markdown("---")
     st.subheader("📄 Export Report")
     html_figs = [fig.to_html(full_html=False, include_plotlyjs='cdn') for fig in [fig1, fig2, fig3, fig4, fig5, fig6]]
