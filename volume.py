@@ -8,7 +8,7 @@ import base64
 import io
 from scipy import stats
 
-# ================== إعدادات الصفحة والثيم ==================
+# ================== إعدادات الصفحة ==================
 st.set_page_config(
     page_title="Volumetric Risk Analysis",
     page_icon="🛢️",
@@ -16,67 +16,105 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ================== CSS مخصص للدارك مود وتحسين الكاردات ==================
-st.markdown("""
+# ================== Dark / Lite Mode Toggle ==================
+if 'dark_mode' not in st.session_state:
+    st.session_state.dark_mode = True
+
+def toggle_theme():
+    st.session_state.dark_mode = not st.session_state.dark_mode
+
+# زر التبديل في الشريط الجانبي
+with st.sidebar:
+    st.button("🌓 Toggle Dark/Lite Mode", on_click=toggle_theme, use_container_width=True)
+
+# تحديد الثيم الحالي
+is_dark = st.session_state.dark_mode
+
+# ================== CSS بناءً على الثيم ==================
+if is_dark:
+    bg_color = "#0a0e1a"
+    card_bg = "#131a2c"
+    text_color = "#e0e4f0"
+    input_bg = "#1e2a3a"
+    input_border = "#2e3b4e"
+    metric_bg = "linear-gradient(145deg, #16202e, #0e1422)"
+    metric_border = "#2a3a50"
+    chart_template = "plotly_dark"
+else:
+    bg_color = "#f5f5f5"
+    card_bg = "#ffffff"
+    text_color = "#1a1a2e"
+    input_bg = "#ffffff"
+    input_border = "#cccccc"
+    metric_bg = "linear-gradient(145deg, #f0f0f0, #e0e0e0)"
+    metric_border = "#dddddd"
+    chart_template = "plotly_white"
+
+st.markdown(f"""
 <style>
-    /* خلفية الصفحة الرئيسية */
-    .stApp {
-        background-color: #0a0e1a;
-        color: #e0e4f0;
-    }
-    /* خلفية الشريط الجانبي */
-    .css-1d391kg, .css-12oz5g7 {
-        background-color: #131a2c;
-    }
-    /* صناديق المدخلات */
-    .stNumberInput input, .stSelectbox select {
-        background-color: #1e2a3a;
-        color: white;
-        border-color: #2e3b4e;
-    }
-    /* العناوين الرئيسية */
-    h1, h2, h3, .stMarkdown {
+    /* خلفية الصفحة */
+    .stApp {{
+        background-color: {bg_color};
+        color: {text_color};
+    }}
+    /* الشريط الجانبي */
+    .css-1d391kg, .css-12oz5g7 {{
+        background-color: {card_bg};
+    }}
+    /* صناديق الإدخال */
+    .stNumberInput input, .stSelectbox select {{
+        background-color: {input_bg};
+        color: {text_color};
+        border-color: {input_border};
+    }}
+    /* العناوين */
+    h1, h2, h3, .stMarkdown {{
         color: #ffb347 !important;
-    }
+    }}
     /* أزرار */
-    .stButton button {
+    .stButton button {{
         background-color: #ff8c42;
         color: #0a0e1a;
         font-weight: bold;
         border-radius: 20px;
         transition: 0.2s;
-    }
-    .stButton button:hover {
+    }}
+    .stButton button:hover {{
         background-color: #ffa05e;
         transform: scale(1.02);
-    }
-    /* تحسين المتركات (كيوس) */
-    div[data-testid="stMetric"] {
-        background: linear-gradient(145deg, #16202e, #0e1422);
+    }}
+    /* المتركات */
+    div[data-testid="stMetric"] {{
+        background: {metric_bg};
         border-radius: 1rem;
         padding: 1rem;
         text-align: center;
-        border: 1px solid #2a3a50;
-    }
-    div[data-testid="stMetric"] label {
-        color: #ffffff !important;
+        border: 1px solid {metric_border};
+    }}
+    div[data-testid="stMetric"] label {{
+        color: {text_color} !important;
         font-weight: bold !important;
         font-size: 1rem !important;
-    }
-    div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
+    }}
+    div[data-testid="stMetric"] div[data-testid="stMetricValue"] {{
         color: #ffb347 !important;
         font-size: 1.6rem !important;
         font-weight: bold !important;
-    }
-    /* تحسين النصوص العامة */
-    .stMarkdown, p, span, div {
-        color: #e0e4f0;
-    }
+    }}
+    /* توحيد ارتفاعات الأعمدة */
+    .stColumn {{
+        background-color: {card_bg};
+        border-radius: 10px;
+        padding: 0.5rem;
+        margin-top: 0;
+        height: 100%;
+    }}
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🛢️ Professional Volumetric Risk Analysis")
-st.markdown("### Monte Carlo Simulation · Dark Mode · Interactive Charts")
+# ================== العنوان ==================
+st.markdown("# 🛢️ Professional Volumetric Risk Analysis")
+st.markdown("### Monte Carlo Simulation - Interactive Charts")
 
 # ================== شريط الإعدادات الجانبي ==================
 with st.sidebar:
@@ -99,7 +137,7 @@ def generate_samples(dist_type, min_val, med_val, max_val, size):
     else:  # Uniform
         return np.random.uniform(min_val, max_val, size)
 
-# ================== مدخلات المتغيرات ==================
+# ================== مدخلات المتغيرات (موحدة) ==================
 col1, col2, col3, col4, col5 = st.columns(5)
 
 with col1:
@@ -197,12 +235,12 @@ if run_button:
 
         # ------------------ 1. Histogram + KDE (Plotly) ------------------
         hist_fig = px.histogram(rec_mm, nbins=80, labels={'value': 'MMSTB', 'count': 'Frequency'},
-                                title='Probability Distribution + KDE', template='plotly_dark')
+                                title='Probability Distribution + KDE', template=chart_template)
         hist_fig.add_vline(x=p90, line_dash="dash", line_color="#e91e63", annotation_text=f"P90: {p90:.1f}")
         hist_fig.add_vline(x=p50, line_dash="solid", line_color="#4caf50", annotation_text=f"P50: {p50:.1f}")
         hist_fig.add_vline(x=p10, line_dash="dash", line_color="#2196f3", annotation_text=f"P10: {p10:.1f}")
         hist_fig.add_vline(x=mean_val, line_dash="dot", line_color="#ff9800", annotation_text=f"Mean: {mean_val:.1f}")
-        hist_fig.update_layout(height=500, width=None, title_font_size=18, font=dict(size=12, color='white'))
+        hist_fig.update_layout(height=500, width=None, title_font_size=18, font=dict(size=12))
         hist_fig.update_traces(marker_color='#2ab7ca', opacity=0.7)
         st.plotly_chart(hist_fig, use_container_width=True)
 
@@ -213,7 +251,7 @@ if run_button:
         cum_fig.add_trace(go.Scatter(x=sorted_data, y=cum_prob, mode='lines', line=dict(color='#673ab7', width=3),
                                      name='Cumulative Probability'))
         cum_fig.update_layout(title='Standard Cumulative (Less Than)', xaxis_title='MMSTB', yaxis_title='Probability',
-                              template='plotly_dark', height=500, title_font_size=18, font=dict(color='white', size=12))
+                              template=chart_template, height=500, title_font_size=18, font=dict(size=12))
         st.plotly_chart(cum_fig, use_container_width=True)
 
         # ------------------ 3. Exceedance Probability (Greater Than) ------------------
@@ -228,16 +266,16 @@ if run_button:
         exc_fig.add_hline(y=0.10, line_dash="dot", line_color="#2196f3")
         exc_fig.add_vline(x=p10, line_dash="dash", line_color="#2196f3", annotation_text="P10")
         exc_fig.update_layout(title='Exceedance Probability (Greater Than)', xaxis_title='MMSTB',
-                              yaxis_title='Probability (Greater Than)', template='plotly_dark', height=500,
-                              title_font_size=18, font=dict(color='white', size=12))
+                              yaxis_title='Probability (Greater Than)', template=chart_template, height=500,
+                              title_font_size=18, font=dict(size=12))
         st.plotly_chart(exc_fig, use_container_width=True)
 
         # ------------------ 4. Heatmap (Spearman) ------------------
         input_corr = df.drop('Recoverable (MMSTB)', axis=1).corr(method='spearman')
         heat_fig = px.imshow(input_corr, text_auto=True, aspect="auto", color_continuous_scale='RdBu',
                              zmin=-1, zmax=1, title='Spearman Correlation Heatmap (Inputs)',
-                             template='plotly_dark')
-        heat_fig.update_layout(height=500, title_font_size=18, font=dict(color='white', size=12))
+                             template=chart_template)
+        heat_fig.update_layout(height=500, title_font_size=18, font=dict(size=12))
         st.plotly_chart(heat_fig, use_container_width=True)
 
         # ------------------ 5. Tornado Chart ------------------
@@ -246,13 +284,13 @@ if run_button:
         tornado_fig = go.Figure()
         tornado_fig.add_trace(go.Bar(y=tornado_df['Variable'], x=tornado_df['Correlation'], orientation='h',
                                      marker_color=tornado_df['Color'], text=tornado_df['Correlation'].round(3),
-                                     textposition='outside', textfont=dict(color='white', size=12)))
-        tornado_fig.add_vline(x=0, line_color='white', line_width=1)
+                                     textposition='outside', textfont=dict(size=12)))
+        tornado_fig.add_vline(x=0, line_color='white' if is_dark else 'black', line_width=1)
         tornado_fig.add_vline(x=0.1, line_dash="dash", line_color='gray')
         tornado_fig.add_vline(x=-0.1, line_dash="dash", line_color='gray')
         tornado_fig.update_layout(title='Tornado Chart - Sensitivity Analysis', xaxis_title='Spearman Correlation',
-                                  xaxis_range=[-1, 1], template='plotly_dark', height=500, title_font_size=18,
-                                  font=dict(color='white', size=12))
+                                  xaxis_range=[-1, 1], template=chart_template, height=500, title_font_size=18,
+                                  font=dict(size=12))
         st.plotly_chart(tornado_fig, use_container_width=True)
 
         # ------------------ 6. Q-Q Plot ------------------
@@ -261,32 +299,30 @@ if run_button:
         qq_fig = go.Figure()
         qq_fig.add_trace(go.Scatter(x=theoretical_quantiles, y=sample_quantiles, mode='markers',
                                     marker=dict(color='#2ab7ca', size=3), name='Sample Quantiles'))
-        # خط المرجع
         min_x, max_x = np.min(theoretical_quantiles), np.max(theoretical_quantiles)
         min_y, max_y = np.min(sample_quantiles), np.max(sample_quantiles)
         qq_fig.add_trace(go.Scatter(x=[min_x, max_x], y=[min_y, max_y], mode='lines',
                                     line=dict(color='#e91e63', width=2, dash='dash'), name='Reference Line'))
         qq_fig.update_layout(title='Q-Q Plot vs Normal Distribution', xaxis_title='Theoretical Quantiles',
-                             yaxis_title='Sample Quantiles (MMSTB)', template='plotly_dark', height=500,
-                             title_font_size=18, font=dict(color='white', size=12))
+                             yaxis_title='Sample Quantiles (MMSTB)', template=chart_template, height=500,
+                             title_font_size=18, font=dict(size=12))
         st.plotly_chart(qq_fig, use_container_width=True)
 
         # ------------------ تقرير للطباعة ------------------
         st.markdown("---")
         st.subheader("📄 Export Report")
 
-        # إعداد بيانات التقرير
         report_html = f"""
         <!DOCTYPE html>
         <html>
         <head><title>Volumetric Risk Analysis Report</title>
         <style>
-            body {{ background-color: #0a0e1a; color: #e0e4f0; font-family: Arial, sans-serif; padding: 2rem; }}
+            body {{ background-color: {bg_color}; color: {text_color}; font-family: Arial, sans-serif; padding: 2rem; }}
             h1, h2 {{ color: #ffb347; }}
             .metrics {{ display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem; }}
-            .metric {{ background: #16202e; border-radius: 10px; padding: 1rem; min-width: 150px; text-align: center; }}
+            .metric {{ background: {card_bg}; border-radius: 10px; padding: 1rem; min-width: 150px; text-align: center; border:1px solid {metric_border}; }}
             .metric span {{ color: #ffb347; font-size: 1.2rem; font-weight: bold; }}
-            hr {{ border-color: #2a3a50; }}
+            hr {{ border-color: {metric_border}; }}
         </style>
         </head>
         <body>
