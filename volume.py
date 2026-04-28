@@ -5,8 +5,6 @@ import plotly.graph_objects as go
 import plotly.express as px
 from scipy.stats import skew, gaussian_kde
 from scipy import stats
-import io
-import base64
 
 # ========== إعدادات الصفحة ==========
 st.set_page_config(page_title="Volumetric Risk Analysis", page_icon="🛢️", layout="wide")
@@ -28,7 +26,6 @@ if "data_stored" not in st.session_state:
     st.session_state.sw = None
     st.session_state.rf = None
     st.session_state.boi = None
-    st.session_state.figures_html = None  # لتخزين HTML لكل الأشكال
 
 # ========== إعدادات الثيم والألوان ==========
 if "dark_mode" not in st.session_state:
@@ -37,7 +34,7 @@ if "dark_mode" not in st.session_state:
 def toggle_theme():
     st.session_state.dark_mode = not st.session_state.dark_mode
 
-# الألوان الافتراضية
+# الألوان الافتراضية للرسوم البيانية
 if "hist_color" not in st.session_state:
     st.session_state.hist_color = "#2ab7ca"
 if "kde_color" not in st.session_state:
@@ -74,37 +71,38 @@ with st.sidebar:
     st.markdown("### Distributions")
     st.info("Each parameter has Triangular / Normal / Uniform")
 
-# ========== مدخلات المتغيرات ==========
+# ========== مدخلات المتغيرات (مع رموز) ==========
 st.markdown("# 🛢️ Professional Volumetric Risk Analysis")
-st.markdown("### Monte Carlo Simulation - Interactive Charts")
+st.markdown("### <span style='color:#FFD966'>Monte Carlo Simulation - Interactive Charts</span>", unsafe_allow_html=True)
 
 col1, col2, col3, col4, col5 = st.columns(5)
+
 with col1:
-    st.subheader("NTG")
+    st.subheader("📊 NTG")
     ntg_min = st.number_input("Min", 0.17, key="ntg_min")
     ntg_med = st.number_input("Med", 0.30, key="ntg_med")
     ntg_max = st.number_input("Max", 0.42, key="ntg_max")
     ntg_dist = st.selectbox("Dist", ["Triangular","Normal","Uniform"], key="ntg_dist")
 with col2:
-    st.subheader("Porosity")
+    st.subheader("🧫 Porosity")
     por_min = st.number_input("Min", 0.09, key="por_min")
     por_med = st.number_input("Med", 0.12, key="por_med")
     por_max = st.number_input("Max", 0.18, key="por_max")
     por_dist = st.selectbox("Dist", ["Triangular","Normal","Uniform"], key="por_dist")
 with col3:
-    st.subheader("Water Sat.")
+    st.subheader("💧 Water Saturation")
     sw_min = st.number_input("Min", 0.30, key="sw_min")
     sw_med = st.number_input("Med", 0.40, key="sw_med")
     sw_max = st.number_input("Max", 0.48, key="sw_max")
     sw_dist = st.selectbox("Dist", ["Triangular","Normal","Uniform"], key="sw_dist")
 with col4:
-    st.subheader("Recovery Factor")
+    st.subheader("📈 Recovery Factor")
     rf_min = st.number_input("Min", 0.16, key="rf_min")
     rf_med = st.number_input("Med", 0.18, key="rf_med")
     rf_max = st.number_input("Max", 0.22, key="rf_max")
     rf_dist = st.selectbox("Dist", ["Triangular","Normal","Uniform"], key="rf_dist")
 with col5:
-    st.subheader("Boi")
+    st.subheader("⚙️ Boi")
     boi_min = st.number_input("Min", 1.15, key="boi_min")
     boi_med = st.number_input("Med", 1.20, key="boi_med")
     boi_max = st.number_input("Max", 1.28, key="boi_max")
@@ -177,6 +175,22 @@ if st.session_state.data_stored:
     rf = st.session_state.rf
     boi = st.session_state.boi
 
+    # تحديد الثيم الحالي
+    is_dark = st.session_state.dark_mode
+    template = "plotly_dark" if is_dark else "plotly_white"
+
+    # تطبيق CSS ديناميكي ليتناسب مع الثيم
+    bg_color = "#0a0e1a" if is_dark else "#ffffff"
+    text_color = "#e0e4f0" if is_dark else "#1a1a2e"
+    card_bg = "#131a2c" if is_dark else "#f8f9fa"
+    
+    st.markdown(f"""
+    <style>
+        .stApp {{ background-color: {bg_color}; }}
+        .stMetric div {{ color: {text_color}; }}
+    </style>
+    """, unsafe_allow_html=True)
+
     # إحصائيات
     st.subheader("📊 Recoverable Oil (MMSTB)")
     a1, a2, a3, a4 = st.columns(4)
@@ -189,10 +203,6 @@ if st.session_state.data_stored:
     b2.metric("CV", f"{cv_val:.3f}")
     b3.metric("Skewness", f"{skew_val:.3f}")
     b4.metric("VaR 95%", f"{var95:.2f}")
-
-    # تحديد الثيم
-    is_dark = st.session_state.dark_mode
-    template = "plotly_dark" if is_dark else "plotly_white"
 
     # ------------------ 1. Histogram + KDE ------------------
     kde = gaussian_kde(rec_mm)
@@ -261,37 +271,33 @@ if st.session_state.data_stored:
     fig6.update_layout(title="6. Q-Q Plot vs Normal", xaxis_title="Theoretical Quantiles", yaxis_title="Sample Quantiles (MMSTB)", template=template, height=500)
     st.plotly_chart(fig6, use_container_width=True)
 
-    # ========== تصدير التقرير كـ HTML (بدون PDF) ==========
+    # ========== تصدير التقرير ==========
     st.markdown("---")
     st.subheader("📄 Export Report")
 
-    # تجميع HTML لكل الرسوم البيانية
-    html_figs = []
-    for fig in [fig1, fig2, fig3, fig4, fig5, fig6]:
-        html_figs.append(fig.to_html(full_html=False, include_plotlyjs='cdn'))
+    # جمع HTML للرسوم
+    html_figs = [fig.to_html(full_html=False, include_plotlyjs='cdn') for fig in [fig1, fig2, fig3, fig4, fig5, fig6]]
 
-    # إنشاء صفحة HTML كاملة
     report_html = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="UTF-8">
-        <title>Volumetric Risk Analysis Report</title>
+        <title>Volumetric Risk Report</title>
         <style>
-            body {{ background-color: {"#0a0e1a" if is_dark else "#f5f5f5"}; color: {"#e0e4f0" if is_dark else "#1a1a2e"}; font-family: Arial, sans-serif; padding: 2rem; }}
-            h1, h2 {{ color: #ffb347; }}
+            body {{ background-color: {bg_color}; color: {text_color}; font-family: Arial; padding: 2rem; }}
+            h1, h2 {{ color: #FFD966; }}
             .stats {{ display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; }}
-            .stat {{ background: {"#131a2c" if is_dark else "#ffffff"}; border-radius: 10px; padding: 0.8rem; min-width: 120px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+            .stat {{ background: {card_bg}; border-radius: 10px; padding: 0.8rem; min-width: 120px; text-align: center; }}
             .stat span {{ color: #ffb347; font-size: 1.2rem; font-weight: bold; }}
-            hr {{ border-color: #2a3a50; }}
         </style>
         <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     </head>
     <body>
         <h1>🛢️ Volumetric Risk Analysis Report</h1>
-        <p>Generated on: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        <p>Date: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
         <p>Iterations: {iterations} | Rock Volume: {rock_volume_m3:,.0f} m³</p>
-        <h2>Summary Statistics (MMSTB)</h2>
+        <h2>Statistics (MMSTB)</h2>
         <div class="stats">
             <div class="stat">P90: {p90:.2f}</div>
             <div class="stat">P50: {p50:.2f}</div>
@@ -305,23 +311,14 @@ if st.session_state.data_stored:
         <h2>Charts</h2>
         {''.join(html_figs)}
         <hr>
-        <p>Report generated by Streamlit Volumetric Risk Analysis Tool</p>
+        <p>Report generated by Streamlit Tool</p>
     </body>
     </html>
     """
 
-    # زر تحميل التقرير
-    st.download_button(
-        label="📑 Download Report as HTML (interactive)",
-        data=report_html,
-        file_name=f"volumetric_report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.html",
-        mime="text/html",
-        use_container_width=True
-    )
-
-    # تصدير CSV (يبقى موجود)
+    st.download_button("📑 Download Report as HTML", report_html, "report.html", "text/html", use_container_width=True)
     csv_data = pd.DataFrame({"Recoverable (MMSTB)": rec_mm}).to_csv(index=False)
     st.download_button("📊 Download Raw Data (CSV)", csv_data, "results.csv", "text/csv")
 
 else:
-    st.info("👈 Click 'Run Simulation' to start.")
+    st.info("👈 Set parameters and click 'Run Simulation' to start.")
