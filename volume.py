@@ -23,9 +23,9 @@ if "dark_mode" not in st.session_state:
 
 def toggle_theme():
     st.session_state.dark_mode = not st.session_state.dark_mode
-    st.rerun()  # إعادة تشغيل التطبيق لتطبيق الثيم الجديد
+    st.rerun()
 
-# ألوان افتراضية
+# ألوان افتراضية للرسوم البيانية
 color_keys = ["hist_color","kde_color","cum_color","exc_color","heatmap_colorscale",
               "tornado_pos_color","tornado_neg_color","qq_color"]
 default_colors = ["#2ab7ca","#ff6b6b","#673ab7","#ff9800","RdBu","#4caf50","#f44336","#2ab7ca"]
@@ -116,95 +116,83 @@ def validate_inputs(rock_mn, rock_md, rock_mx, ntg_mn, ntg_md, ntg_mx,
             st.warning(f"{name}: Min ≤ Med ≤ Max not satisfied")
     return valid
 
-# ========== دوال CSS الديناميكي ==========
-def apply_custom_css(is_dark):
+# ========== CSS ديناميكي مع تحسين الكروت ==========
+def apply_base_css(is_dark):
     if is_dark:
-        bg_color = "#0a0e1a"
+        bg = "#0a0e1a"
+        card_bg = "linear-gradient(145deg, #1e2a3a, #0f1622)"
         text_color = "#e0e4f0"
-        input_bg = "#1e2a3a"
-        input_border = "#2e3b4e"
-        yellow_main = "#ffb347"
-        yellow_hover = "#ffcc00"
-        container_bg = "#131a2c"
+        accent = "#ffb347"
+        glow = "0 0 12px rgba(255, 179, 71, 0.4)"
+        shadow = "0 8px 20px rgba(0,0,0,0.4)"
     else:
-        bg_color = "#f5f5f5"
+        bg = "#f5f5f5"
+        card_bg = "linear-gradient(145deg, #ffffff, #f0f2f5)"
         text_color = "#1a1a2e"
-        input_bg = "#ffffff"
-        input_border = "#ced4da"
-        yellow_main = "#d35400"
-        yellow_hover = "#e67e22"
-        container_bg = "#ffffff"
+        accent = "#e67e22"
+        glow = "0 0 12px rgba(230, 126, 34, 0.3)"
+        shadow = "0 8px 20px rgba(0,0,0,0.1)"
     
     st.markdown(f"""
     <style>
-        /* تنسيق الخلفية */
         .stApp {{
-            background-color: {bg_color};
+            background-color: {bg};
         }}
-        /* تنسيق الحاويات الرئيسية */
-        .stColumn {{
-            background-color: {container_bg};
-            border-radius: 12px;
-            padding: 0.8rem 0.5rem;
-            margin: 0 0.2rem;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
-        }}
-        /* تنسيق العناوين الفرعية (الأيقونات) */
-        .stSubheader {{
-            font-size: 1rem !important;
-            font-weight: 700 !important;
-            color: {yellow_main} !important;
-            text-align: center;
-            margin-bottom: 0.8rem !important;
-        }}
-        /* تنسيق المدخلات */
-        .stNumberInput input, .stSelectbox select {{
-            background-color: {input_bg};
-            color: {text_color};
-            border-color: {input_border};
-            border-radius: 8px;
-            padding: 0.45rem;
-            font-size: 0.8rem;
-            width: 100%;
-            transition: 0.2s;
-        }}
-        .stNumberInput input:focus, .stSelectbox select:focus {{
-            border-color: {yellow_hover};
-            box-shadow: 0 0 4px {yellow_hover};
-        }}
-        /* تنسيق البطاقات */
         .stMetric {{
-            background: {container_bg};
-            border-radius: 12px;
-            padding: 0.6rem;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+            background: {card_bg};
+            border-radius: 20px;
+            padding: 1rem 0.5rem;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255,179,71,0.2);
+            cursor: pointer;
+        }}
+        .stMetric:hover {{
+            transform: translateY(-6px) scale(1.02);
+            box-shadow: {shadow};
+            border-color: {accent};
+        }}
+        .stMetric:hover .stMetricValue {{
+            text-shadow: {glow};
         }}
         .stMetric label {{
             color: {text_color} !important;
-            font-size: 0.75rem !important;
+            font-size: 0.85rem !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.5px;
         }}
         .stMetric div {{
-            color: {yellow_main} !important;
-            font-size: 1.3rem !important;
-            font-weight: bold !important;
+            color: {accent} !important;
+            font-size: 1.6rem !important;
+            font-weight: 800 !important;
+            transition: text-shadow 0.3s;
         }}
-        /* تنسيق الأزرار */
+        .stNumberInput input, .stSelectbox select {{
+            background-color: {"#1e2a3a" if is_dark else "#ffffff"};
+            color: {text_color};
+            border-radius: 8px;
+            padding: 0.5rem;
+            border: 1px solid {"#2e3b4e" if is_dark else "#ced4da"};
+        }}
+        .stNumberInput input:focus, .stSelectbox select:focus {{
+            border-color: {accent};
+            box-shadow: 0 0 5px {accent};
+        }}
+        h1, h2, h3, .stMarkdown {{ color: {text_color}; }}
         .stButton button {{
-            background-color: {yellow_main};
+            background-color: {accent};
             color: #1a1a2e !important;
             font-weight: bold;
-            border-radius: 30px;
+            border-radius: 40px;
             border: none;
             transition: 0.2s;
+            padding: 0.5rem 1rem;
         }}
         .stButton button:hover {{
-            background-color: {yellow_hover};
+            background-color: {"#ffcc00" if is_dark else "#f39c12"};
+            transform: scale(1.02);
             color: white !important;
-            transform: scale(1.01);
-        }}
-        /* تنسيق النصوص العامة */
-        h1, h2, h3, p, div {{
-            color: {text_color};
         }}
     </style>
     """, unsafe_allow_html=True)
@@ -240,9 +228,8 @@ def run_simulation():
     st.session_state.rock_volume = rock_m3
     st.session_state.data_stored = True
 
-# ========== واجهة المستخدم ==========
-# تطبيق CSS الحالي (دون نتائج)
-apply_custom_css(st.session_state.dark_mode)
+# ========== واجهة الإدخال ==========
+apply_base_css(st.session_state.dark_mode)
 
 st.markdown("# 🛢️ Professional Volumetric Risk Analysis")
 st.markdown("### <span style='color:#c0392b; font-weight:bold;'>Monte Carlo Simulation - Interactive Charts - Eman Ahmed</span>", unsafe_allow_html=True)
@@ -310,13 +297,9 @@ if st.session_state.data_stored:
 
     is_dark = st.session_state.dark_mode
     template = "plotly_dark" if is_dark else "plotly_white"
+    apply_base_css(is_dark)
 
-    # تحديث CSS بعد التشغيل للحفاظ على التنسيق
-    apply_custom_css(is_dark)
-
-    # كاردات النتائج
     st.subheader("📊 Recoverable Oil (MMSTB)")
-    
     cola, colb, colc, cold = st.columns(4)
     cola.metric("P90 (Conservative)", f"{p90:.2f}")
     colb.metric("P50 (Most Likely)", f"{p50:.2f}")
@@ -328,7 +311,7 @@ if st.session_state.data_stored:
     colg.metric("Skewness", f"{sk:.3f}")
     colh.metric("VaR 95%", f"{v95:.2f}")
 
-    # الرسوم البيانية
+    # الرسوم البيانية (كما هي)
     if np.std(rec) == 0:
         rec_kde = rec + np.random.normal(0, 1e-6, len(rec))
     else:
@@ -366,14 +349,12 @@ if st.session_state.data_stored:
     fig3.update_layout(title="3. Exceedance Probability", template=template, height=500)
     st.plotly_chart(fig3, use_container_width=True)
 
-    # Heatmap
     df_corr = pd.DataFrame({'Rock': rock, 'NTG': ntg, 'Por': por, 'Sw': sw, 'RF': rf, 'Boi': boi})
     corr_mat = df_corr.corr(method='spearman')
     fig4 = px.imshow(corr_mat, text_auto=True, aspect="auto", color_continuous_scale=st.session_state.heatmap_colorscale, zmin=-1, zmax=1, title="4. Spearman Correlation Heatmap")
     fig4.update_layout(template=template, height=500)
     st.plotly_chart(fig4, use_container_width=True)
 
-    # Tornado
     df_all = pd.DataFrame({'Rock': rock, 'NTG': ntg, 'Por': por, 'Sw': sw, 'RF': rf, 'Boi': boi, 'Rec': rec})
     corr_rec = df_all.corr(method='spearman')['Rec'].drop('Rec').sort_values(key=abs)
     tdf = pd.DataFrame({'Var': corr_rec.index, 'Corr': corr_rec.values})
@@ -386,7 +367,6 @@ if st.session_state.data_stored:
     fig5.update_layout(title="5. Tornado Chart", xaxis_title="Spearman Correlation", xaxis_range=[-1,1], template=template, height=500)
     st.plotly_chart(fig5, use_container_width=True)
 
-    # Q-Q Plot
     theo = stats.norm.ppf(np.linspace(0.01, 0.99, len(rec)))
     samp = np.percentile(rec, np.linspace(1, 99, len(rec)))
     fig6 = go.Figure()
@@ -395,11 +375,10 @@ if st.session_state.data_stored:
     fig6.update_layout(title="6. Q-Q Plot vs Normal", template=template, height=500)
     st.plotly_chart(fig6, use_container_width=True)
 
-    # ========== تصدير التقرير مع جدول المدخلات ==========
+    # ========== تصدير التقرير ==========
     st.markdown("---")
     st.subheader("📄 Export Report")
 
-    # جمع قيم المدخلات لعرضها في جدول HTML
     input_data = {
         "Parameter": ["Rock Volume (m³)", "NTG", "Porosity", "Water Saturation", "Recovery Factor", "Boi"],
         "Min": [f"{rock_min:,.0f}", f"{ntg_min:.2f}", f"{por_min:.2f}", f"{sw_min:.2f}", f"{rf_min:.2f}", f"{boi_min:.2f}"],
@@ -408,34 +387,37 @@ if st.session_state.data_stored:
         "Distribution": [rock_dist, ntg_dist, por_dist, sw_dist, rf_dist, boi_dist]
     }
     input_df = pd.DataFrame(input_data)
+    csv_input = input_df.to_csv(index=False)
+    st.download_button("📋 Download Input Parameters CSV", csv_input, "input_parameters.csv", "text/csv", use_container_width=True)
 
     html_figs = [fig.to_html(full_html=False, include_plotlyjs='cdn') for fig in [fig1, fig2, fig3, fig4, fig5, fig6]]
-    bgc = "#0a0e1a" if is_dark else "#ffffff"
-    tc = "#e0e4f0" if is_dark else "#1a1a2e"
-    card_bg_html = "#131a2c" if is_dark else "#f8f9fa"
-    
+    report_bg = "#0a0e1a"
+    report_text = "#e0e4f0"
+    report_card_bg = "#131a2c"
+    accent_color = "#ffb347"
     report_html = f"""
     <!DOCTYPE html>
     <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>Volumetric Risk Report</title>
-        <style>
-            body {{ background-color: {bgc}; color: {tc}; font-family: Arial, sans-serif; padding: 2rem; }}
-            h1, h2, h3 {{ color: #c0392b; }}
-            .stats {{ display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; }}
-            .stat {{ background-color: {card_bg_html}; border-radius: 10px; padding: 0.8rem; min-width: 120px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
-            table {{ width: 100%; border-collapse: collapse; margin: 1rem 0; }}
-            th, td {{ border: 1px solid #ccc; padding: 8px; text-align: center; }}
-            th {{ background-color: {card_bg_html}; color: #c0392b; }}
-        </style>
-        <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <head><meta charset="UTF-8"><title>Volumetric Risk Report</title>
+    <style>
+        body {{ background-color: {report_bg}; color: {report_text}; font-family: Arial, sans-serif; padding: 2rem; }}
+        h1, h2, h3 {{ color: #c0392b; }}
+        .stats {{ display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; }}
+        .stat {{ background-color: {report_card_bg}; border-radius: 10px; padding: 0.8rem; min-width: 120px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3); border: 1px solid #ffb34733; }}
+        .stat span {{ color: {accent_color}; font-weight: bold; }}
+        table {{ width: 100%; border-collapse: collapse; margin: 1rem 0; background-color: {report_card_bg}; }}
+        th, td {{ border: 1px solid #2a3a50; padding: 8px; text-align: center; }}
+        th {{ background-color: #1a2a3a; color: {accent_color}; }}
+        a, button {{ background-color: {accent_color}; color: #1a1a2e; padding: 6px 12px; border-radius: 20px; text-decoration: none; display: inline-block; margin: 5px 0; }}
+    </style>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     </head>
     <body>
         <h1>🛢️ Volumetric Risk Analysis Report</h1>
         <p>Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')} | Iterations: {iterations}</p>
         <h2>Input Parameters</h2>
         {input_df.to_html(index=False)}
+        <p><em>You can copy the table above or <a href="data:text/csv;charset=utf-8,{csv_input}" download="input_parameters.csv">click here to download CSV</a></em></p>
         <h2>Recoverable Oil Statistics (MMSTB)</h2>
         <div class="stats">
             <div class="stat">P90: {p90:.2f}</div>
@@ -457,6 +439,5 @@ if st.session_state.data_stored:
     csv_data = pd.DataFrame({"Recoverable (MMSTB)": rec}).to_csv(index=False)
     st.download_button("📊 Download CSV", csv_data, "results.csv", "text/csv")
 else:
-    # قبل التشغيل، نطبق CSS فقط
-    apply_custom_css(st.session_state.dark_mode)
+    apply_base_css(st.session_state.dark_mode)
     st.info("👈 Set parameters and click 'Run Simulation' to start.")
