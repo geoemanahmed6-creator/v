@@ -17,7 +17,7 @@ if "data_stored" not in st.session_state:
     st.session_state.mean_val = st.session_state.std_val = st.session_state.cv_val = None
     st.session_state.skew_val = st.session_state.var95 = None
     st.session_state.ntg = st.session_state.porosity = st.session_state.sw = None
-    st.session_state.rf = st.session_state.boi = None
+    st.session_state.rf = st.session_state.boi = st.session_state.rock_volume = None  # تمت الإضافة
 
 if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = True
@@ -48,13 +48,17 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("## ⚙️ Simulation")
     iterations = st.number_input("Iterations", min_value=1000, max_value=100000, value=50000, step=1000, key="iter_input")
-    rock_volume_m3 = st.number_input("Rock Volume (m³)", value=80576000.0, step=1000000.0, key="rock_vol_input")
-    st.info("📌 NTG, Porosity, Sw, RF must be between 0 and 1. Boi > 0. Min ≤ Med ≤ Max is recommended.")
+    st.info("📌 All parameters (except Boi) are between 0 and 1. Boi > 0. Min ≤ Med ≤ Max is recommended.")
 
 # ========== دوال التحقق ==========
-def validate_inputs(ntg_mn, ntg_md, ntg_mx, por_mn, por_md, por_mx, sw_mn, sw_md, sw_mx,
-                    rf_mn, rf_md, rf_mx, boi_mn, boi_md, boi_mx):
+def validate_inputs(rock_mn, rock_md, rock_mx, ntg_mn, ntg_md, ntg_mx, por_mn, por_md, por_mx,
+                    sw_mn, sw_md, sw_mx, rf_mn, rf_md, rf_mx, boi_mn, boi_md, boi_mx):
     valid = True
+    # Rock Volume (أرقام حرة > 0)
+    if rock_mn <= 0 or rock_md <= 0 or rock_mx <= 0:
+        st.error("Rock Volume: all values must be greater than 0.")
+        valid = False
+    # الفحص 0-1 للمتغيرات الأخرى
     for name, mn, md, mx in [("NTG", ntg_mn, ntg_md, ntg_mx),
                              ("Porosity", por_mn, por_md, por_mx),
                              ("Sw", sw_mn, sw_md, sw_mx),
@@ -65,16 +69,15 @@ def validate_inputs(ntg_mn, ntg_md, ntg_mx, por_mn, por_md, por_mx, sw_mn, sw_md
     if boi_mn <= 0 or boi_md <= 0 or boi_mx <= 0:
         st.error("Boi: all values must be greater than 0.")
         valid = False
-    if not (ntg_mn <= ntg_md <= ntg_mx):
-        st.warning("NTG: Min ≤ Med ≤ Max not satisfied. Consider adjusting.")
-    if not (por_mn <= por_md <= por_mx):
-        st.warning("Porosity: Min ≤ Med ≤ Max not satisfied.")
-    if not (sw_mn <= sw_md <= sw_mx):
-        st.warning("Sw: Min ≤ Med ≤ Max not satisfied.")
-    if not (rf_mn <= rf_md <= rf_mx):
-        st.warning("RF: Min ≤ Med ≤ Max not satisfied.")
-    if not (boi_mn <= boi_md <= boi_mx):
-        st.warning("Boi: Min ≤ Med ≤ Max not satisfied.")
+    # تحذيرات الترتيب
+    for name, mn, md, mx in [("Rock Volume", rock_mn, rock_md, rock_mx),
+                             ("NTG", ntg_mn, ntg_md, ntg_mx),
+                             ("Porosity", por_mn, por_md, por_mx),
+                             ("Sw", sw_mn, sw_md, sw_mx),
+                             ("RF", rf_mn, rf_md, rf_mx),
+                             ("Boi", boi_mn, boi_md, boi_mx)]:
+        if not (mn <= md <= mx):
+            st.warning(f"{name}: Min ≤ Med ≤ Max not satisfied.")
     return valid
 
 # ========== دوال توليد العينات ==========
@@ -88,15 +91,24 @@ def gen_sample(dist, mn, md, mx, size):
         return np.random.uniform(mn, mx, size)
 
 def run_simulation():
-    rock_volume = rock_volume_m3 * 0.0008107132
     np.random.seed(42)
+    
+    # توليد العينات (بما في ذلك Rock Volume)
+    rock_volume_m3_arr = gen_sample(rock_dist, rock_min, rock_med, rock_max, iterations)
+    # تحويل إلى acre-ft
+    rock_volume_arr = rock_volume_m3_arr * 0.0008107132
+    
     ntg = gen_sample(ntg_dist, ntg_min, ntg_med, ntg_max, iterations)
     por = gen_sample(por_dist, por_min, por_med, por_max, iterations)
     sw = gen_sample(sw_dist, sw_min, sw_med, sw_max, iterations)
     rf = gen_sample(rf_dist, rf_min, rf_med, rf_max, iterations)
     boi = gen_sample(boi_dist, boi_min, boi_med, boi_max, iterations)
-    ooip = (7758 * rock_volume * ntg * por * (1 - sw)) / boi
+    
+    # الحسابات الحجمية
+    ooip = (7758 * rock_volume_arr * ntg * por * (1 - sw)) / boi
     rec = ooip * rf / 1e6
+    
+    # الإحصائيات
     p90 = np.percentile(rec, 10)
     p50 = np.percentile(rec, 50)
     p10 = np.percentile(rec, 90)
@@ -105,6 +117,8 @@ def run_simulation():
     cv_val = std_val / mean_val if mean_val != 0 else 0
     skew_val = skew(rec)
     var95 = np.percentile(rec, 5)
+    
+    # تخزين كل شيء
     st.session_state.rec_mm = rec
     st.session_state.p90, st.session_state.p50, st.session_state.p10 = p90, p50, p10
     st.session_state.mean_val, st.session_state.std_val = mean_val, std_val
@@ -112,53 +126,63 @@ def run_simulation():
     st.session_state.var95 = var95
     st.session_state.ntg, st.session_state.porosity = ntg, por
     st.session_state.sw, st.session_state.rf, st.session_state.boi = sw, rf, boi
+    st.session_state.rock_volume = rock_volume_m3_arr
     st.session_state.data_stored = True
 
-# ========== واجهة الإدخال الرئيسية (بإصلاح st.number_input) ==========
+# ========== واجهة الإدخال الرئيسية ==========
 st.markdown("# 🛢️ Professional Volumetric Risk Analysis")
 st.markdown("### <span style='color:#FFD966'>Monte Carlo Simulation - Interactive Charts</span>", unsafe_allow_html=True)
 
-col1, col2, col3, col4, col5 = st.columns(5)
+# صف أول للمتغيرات (6 متغيرات الآن)
+col1, col2, col3, col4, col5, col6 = st.columns(6)
 
 with col1:
+    st.subheader("🗻 Rock Volume")
+    rock_min = st.number_input("Min (m³)", value=70000000.0, min_value=10000.0, step=1000000.0, key="rock_min")
+    rock_med = st.number_input("Med (m³)", value=80576000.0, min_value=10000.0, step=1000000.0, key="rock_med")
+    rock_max = st.number_input("Max (m³)", value=90000000.0, min_value=10000.0, step=1000000.0, key="rock_max")
+    rock_dist = st.selectbox("Dist", ["Triangular","Normal","Uniform"], key="rock_dist")
+
+with col2:
     st.subheader("📊 NTG")
     ntg_min = st.number_input("Min", value=0.17, min_value=0.0, max_value=1.0, step=0.01, key="ntg_min")
     ntg_med = st.number_input("Med", value=0.30, min_value=0.0, max_value=1.0, step=0.01, key="ntg_med")
     ntg_max = st.number_input("Max", value=0.42, min_value=0.0, max_value=1.0, step=0.01, key="ntg_max")
     ntg_dist = st.selectbox("Dist", ["Triangular","Normal","Uniform"], key="ntg_dist")
 
-with col2:
+with col3:
     st.subheader("🧫 Porosity")
     por_min = st.number_input("Min", value=0.09, min_value=0.0, max_value=1.0, step=0.01, key="por_min")
     por_med = st.number_input("Med", value=0.12, min_value=0.0, max_value=1.0, step=0.01, key="por_med")
     por_max = st.number_input("Max", value=0.18, min_value=0.0, max_value=1.0, step=0.01, key="por_max")
     por_dist = st.selectbox("Dist", ["Triangular","Normal","Uniform"], key="por_dist")
 
-with col3:
+with col4:
     st.subheader("💧 Water Saturation")
     sw_min = st.number_input("Min", value=0.30, min_value=0.0, max_value=1.0, step=0.01, key="sw_min")
     sw_med = st.number_input("Med", value=0.40, min_value=0.0, max_value=1.0, step=0.01, key="sw_med")
     sw_max = st.number_input("Max", value=0.48, min_value=0.0, max_value=1.0, step=0.01, key="sw_max")
     sw_dist = st.selectbox("Dist", ["Triangular","Normal","Uniform"], key="sw_dist")
 
-with col4:
+with col5:
     st.subheader("📈 Recovery Factor")
     rf_min = st.number_input("Min", value=0.16, min_value=0.0, max_value=1.0, step=0.01, key="rf_min")
     rf_med = st.number_input("Med", value=0.18, min_value=0.0, max_value=1.0, step=0.01, key="rf_med")
     rf_max = st.number_input("Max", value=0.22, min_value=0.0, max_value=1.0, step=0.01, key="rf_max")
     rf_dist = st.selectbox("Dist", ["Triangular","Normal","Uniform"], key="rf_dist")
 
-with col5:
+with col6:
     st.subheader("⚙️ Boi")
     boi_min = st.number_input("Min", value=1.15, min_value=0.01, step=0.01, key="boi_min")
     boi_med = st.number_input("Med", value=1.20, min_value=0.01, step=0.01, key="boi_med")
     boi_max = st.number_input("Max", value=1.28, min_value=0.01, step=0.01, key="boi_max")
     boi_dist = st.selectbox("Dist", ["Triangular","Normal","Uniform"], key="boi_dist")
 
+# زر التشغيل
 if st.button("🚀 Run Simulation", type="primary", use_container_width=True):
-    if validate_inputs(ntg_min, ntg_med, ntg_max, por_min, por_med, por_max,
-                       sw_min, sw_med, sw_max, rf_min, rf_med, rf_max,
-                       boi_min, boi_med, boi_max):
+    if validate_inputs(rock_min, rock_med, rock_max, ntg_min, ntg_med, ntg_max,
+                       por_min, por_med, por_max, sw_min, sw_med, sw_max,
+                       rf_min, rf_med, rf_max, boi_min, boi_med, boi_max):
         run_simulation()
     else:
         st.error("Please fix the input errors above.")
@@ -169,10 +193,11 @@ if st.session_state.data_stored:
     p90, p50, p10 = st.session_state.p90, st.session_state.p50, st.session_state.p10
     mean_val, std_val, cv_val, skew_val, var95 = (st.session_state.mean_val, st.session_state.std_val,
                                                    st.session_state.cv_val, st.session_state.skew_val, st.session_state.var95)
-    ntg, porosity, sw, rf, boi = (st.session_state.ntg, st.session_state.porosity,
-                                   st.session_state.sw, st.session_state.rf, st.session_state.boi)
+    ntg, porosity, sw, rf, boi, rock_volume_arr = (st.session_state.ntg, st.session_state.porosity,
+                                                    st.session_state.sw, st.session_state.rf, 
+                                                    st.session_state.boi, st.session_state.rock_volume)
 
-    # ========== كاردات جذابة بتصميم عصري ==========
+    # ========== كاردات النتائج الجذابة ==========
     st.subheader("📊 Recoverable Oil (MMSTB)")
     is_dark = st.session_state.dark_mode
     card_bg_gradient = "linear-gradient(145deg, #1e2a3a, #0f1622)" if is_dark else "linear-gradient(145deg, #ffffff, #f0f2f5)"
@@ -183,24 +208,24 @@ if st.session_state.data_stored:
     .metric-card {{
         background: {card_bg_gradient};
         border-radius: 16px;
-        padding: 1.2rem 0.8rem;
+        padding: 1rem 0.5rem;
         text-align: center;
         box-shadow: {card_shadow};
         transition: transform 0.2s, box-shadow 0.2s;
         border: 1px solid rgba(255,179,71,0.3);
     }}
     .metric-card:hover {{
-        transform: translateY(-5px);
+        transform: translateY(-3px);
         box-shadow: 0 8px 25px rgba(0,0,0,0.4);
     }}
     .metric-label {{
-        font-size: 0.9rem;
+        font-size: 0.75rem;
         font-weight: 600;
         color: {"#d1d5db" if is_dark else "#4b5563"};
-        margin-bottom: 0.5rem;
+        margin-bottom: 0.3rem;
     }}
     .metric-value {{
-        font-size: 1.8rem;
+        font-size: 1.4rem;
         font-weight: 700;
         color: {card_text_color};
         line-height: 1.2;
@@ -228,10 +253,10 @@ if st.session_state.data_stored:
     with col_h:
         st.markdown(f'<div class="metric-card"><div class="metric-label">VaR 95%</div><div class="metric-value">{var95:.2f}</div></div>', unsafe_allow_html=True)
 
-    # ========== الرسوم البيانية (مع معالجة خطأ KDE) ==========
+    # ========== الرسوم البيانية ==========
     template = "plotly_dark" if is_dark else "plotly_white"
 
-    # معالجة حالة البيانات الثابتة (std=0) لتجنب انهيار gaussian_kde
+    # معالجة حالة البيانات الثابتة لـ KDE
     if np.std(rec_mm) == 0:
         rec_mm_kde = rec_mm + np.random.normal(0, 1e-6, len(rec_mm))
     else:
@@ -244,6 +269,7 @@ if st.session_state.data_stored:
         kde_vals = kde(xr) * len(rec_mm) * (xr[1]-xr[0])
     except:
         kde_vals = np.zeros_like(xr)
+    
     fig1 = go.Figure()
     fig1.add_trace(go.Histogram(x=rec_mm, nbinsx=80, name="Frequency",
                                 marker=dict(color=st.session_state.hist_color, line=dict(color='white', width=0.5), opacity=0.7)))
@@ -276,8 +302,15 @@ if st.session_state.data_stored:
     fig3.update_layout(title="3. Exceedance Probability", template=template, height=500)
     st.plotly_chart(fig3, use_container_width=True)
 
-    # 4. Heatmap
-    df_corr = pd.DataFrame({'NTG': ntg, 'Porosity': porosity, 'Sw': sw, 'RF': rf, 'Boi': boi})
+    # 4. Heatmap (مع إضافة Rock Volume)
+    df_corr = pd.DataFrame({
+        'Rock Volume': rock_volume_arr,
+        'NTG': ntg,
+        'Porosity': porosity,
+        'Sw': sw,
+        'RF': rf,
+        'Boi': boi
+    })
     corr_mat = df_corr.corr(method='spearman')
     fig4 = px.imshow(corr_mat, text_auto=True, aspect="auto", color_continuous_scale=st.session_state.heatmap_colorscale,
                      zmin=-1, zmax=1, title="4. Spearman Correlation Heatmap")
@@ -285,7 +318,15 @@ if st.session_state.data_stored:
     st.plotly_chart(fig4, use_container_width=True)
 
     # 5. Tornado
-    df_all = pd.DataFrame({'NTG': ntg, 'Porosity': porosity, 'Sw': sw, 'RF': rf, 'Boi': boi, 'Rec': rec_mm})
+    df_all = pd.DataFrame({
+        'Rock Volume': rock_volume_arr,
+        'NTG': ntg,
+        'Porosity': porosity,
+        'Sw': sw,
+        'RF': rf,
+        'Boi': boi,
+        'Rec': rec_mm
+    })
     corr_rec = df_all.corr(method='spearman')['Rec'].drop('Rec').sort_values(key=abs)
     tornado_df = pd.DataFrame({'Variable': corr_rec.index, 'Correlation': corr_rec.values})
     tornado_df['Color'] = tornado_df['Correlation'].apply(lambda x: st.session_state.tornado_pos_color if x>=0 else st.session_state.tornado_neg_color)
@@ -320,7 +361,7 @@ if st.session_state.data_stored:
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script></head>
     <body><h1>🛢️ Volumetric Risk Analysis Report</h1>
     <p>Date: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-    <p>Iterations: {iterations} | Rock Volume: {rock_volume_m3:,.0f} m³</p>
+    <p>Iterations: {iterations}</p>
     <h2>Statistics (MMSTB)</h2>
     <div class="stats"><div class="stat">P90: {p90:.2f}</div><div class="stat">P50: {p50:.2f}</div><div class="stat">P10: {p10:.2f}</div><div class="stat">Mean: {mean_val:.2f}</div><div class="stat">Std Dev: {std_val:.2f}</div><div class="stat">CV: {cv_val:.3f}</div><div class="stat">Skewness: {skew_val:.3f}</div><div class="stat">VaR 95%: {var95:.2f}</div></div>
     <h2>Charts</h2>{''.join(html_figs)}<hr><p>Report generated by Streamlit Volumetric Tool</p></body></html>
@@ -330,4 +371,4 @@ if st.session_state.data_stored:
     st.download_button("📊 Download Raw Data (CSV)", csv_data, "results.csv", "text/csv")
 else:
     if not st.session_state.data_stored:
-        st.info("👈 Click 'Run Simulation' after setting parameters.")
+        st.info("👈 Set parameters and click 'Run Simulation' to start.")
