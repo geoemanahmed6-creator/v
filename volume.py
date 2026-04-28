@@ -1,12 +1,12 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import matplotlib.ticker as ticker
+import plotly.graph_objects as go
+import plotly.express as px
 from scipy.stats import skew, probplot
-import io
 import base64
+import io
+from scipy import stats
 
 # ================== إعدادات الصفحة والثيم ==================
 st.set_page_config(
@@ -16,21 +16,29 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ================== CSS مخصص للدارك مود (مع تحسين لون الخطوط) ==================
+# ================== CSS مخصص للدارك مود وتحسين الكاردات ==================
 st.markdown("""
 <style>
+    /* خلفية الصفحة الرئيسية */
     .stApp {
         background-color: #0a0e1a;
-        color: #f0f0f0;
+        color: #e0e4f0;
     }
+    /* خلفية الشريط الجانبي */
     .css-1d391kg, .css-12oz5g7 {
         background-color: #131a2c;
     }
+    /* صناديق المدخلات */
     .stNumberInput input, .stSelectbox select {
         background-color: #1e2a3a;
         color: white;
         border-color: #2e3b4e;
     }
+    /* العناوين الرئيسية */
+    h1, h2, h3, .stMarkdown {
+        color: #ffb347 !important;
+    }
+    /* أزرار */
     .stButton button {
         background-color: #ff8c42;
         color: #0a0e1a;
@@ -42,28 +50,33 @@ st.markdown("""
         background-color: #ffa05e;
         transform: scale(1.02);
     }
-    .stMetric {
+    /* تحسين المتركات (كيوس) */
+    div[data-testid="stMetric"] {
         background: linear-gradient(145deg, #16202e, #0e1422);
         border-radius: 1rem;
         padding: 1rem;
         text-align: center;
         border: 1px solid #2a3a50;
     }
-    .stMetric label {
-        color: #dddddd !important;
+    div[data-testid="stMetric"] label {
+        color: #ffffff !important;
+        font-weight: bold !important;
+        font-size: 1rem !important;
     }
-    .stMetric .stMetricValue {
+    div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
         color: #ffb347 !important;
-        font-size: 1.5rem !important;
+        font-size: 1.6rem !important;
+        font-weight: bold !important;
     }
-    h1, h2, h3, .stMarkdown {
-        color: #ffb347 !important;
+    /* تحسين النصوص العامة */
+    .stMarkdown, p, span, div {
+        color: #e0e4f0;
     }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("🛢️ Professional Volumetric Risk Analysis")
-st.markdown("### Monte Carlo Simulation · Dark Mode · Full Sensitivity")
+st.markdown("### Monte Carlo Simulation · Dark Mode · Interactive Charts")
 
 # ================== شريط الإعدادات الجانبي ==================
 with st.sidebar:
@@ -86,7 +99,7 @@ def generate_samples(dist_type, min_val, med_val, max_val, size):
     else:  # Uniform
         return np.random.uniform(min_val, max_val, size)
 
-# ================== مدخلات المتغيرات (5 أعمدة) ==================
+# ================== مدخلات المتغيرات ==================
 col1, col2, col3, col4, col5 = st.columns(5)
 
 with col1:
@@ -151,7 +164,7 @@ if run_button:
         p10 = np.percentile(rec_mm, 90)
         mean_val = np.mean(rec_mm)
         std_val = np.std(rec_mm)
-        cv_val = std_val / mean_val if mean_val != 0 else 0
+        cv_val = std_val / mean_val
         skew_val = skew(rec_mm)
         var_95 = np.percentile(rec_mm, 5)
 
@@ -182,179 +195,128 @@ if run_button:
         corr_series = df.corr(method='spearman')['Recoverable (MMSTB)'].drop('Recoverable (MMSTB)')
         corr_sorted = corr_series.sort_values(key=abs)
 
-        # --- الرسم البياني 1: هيستوجرام + KDE ---
-        st.subheader("1. Probability Distribution with KDE")
-        fig1, ax1 = plt.subplots(figsize=(14, 7))
-        fig1.patch.set_facecolor('#0f1622')
-        ax1.set_facecolor('#1a2332')
-        sns.histplot(rec_mm, bins=80, kde=True, color='#2ab7ca', edgecolor='white', ax=ax1)
-        ax1.axvline(p90, color='#e91e63', linestyle='--', linewidth=2, label=f'P90: {p90:.1f}')
-        ax1.axvline(p50, color='#4caf50', linestyle='-', linewidth=2, label=f'P50: {p50:.1f}')
-        ax1.axvline(p10, color='#2196f3', linestyle='--', linewidth=2, label=f'P10: {p10:.1f}')
-        ax1.axvline(mean_val, color='#ff9800', linestyle=':', linewidth=2, label=f'Mean: {mean_val:.1f}')
-        ax1.set_title('Recoverable Oil Distribution (MMSTB)', fontweight='bold', fontsize=16, color='#ffb347')
-        ax1.set_xlabel('MMSTB', fontsize=14, color='white')
-        ax1.set_ylabel('Frequency', fontsize=14, color='white')
-        ax1.legend(fontsize=12, facecolor='#1a2332', labelcolor='white')
-        ax1.tick_params(axis='both', colors='white', labelsize=11)
-        ax1.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: f'{x:.1f}'))
-        st.pyplot(fig1)
+        # ------------------ 1. Histogram + KDE (Plotly) ------------------
+        hist_fig = px.histogram(rec_mm, nbins=80, labels={'value': 'MMSTB', 'count': 'Frequency'},
+                                title='Probability Distribution + KDE', template='plotly_dark')
+        hist_fig.add_vline(x=p90, line_dash="dash", line_color="#e91e63", annotation_text=f"P90: {p90:.1f}")
+        hist_fig.add_vline(x=p50, line_dash="solid", line_color="#4caf50", annotation_text=f"P50: {p50:.1f}")
+        hist_fig.add_vline(x=p10, line_dash="dash", line_color="#2196f3", annotation_text=f"P10: {p10:.1f}")
+        hist_fig.add_vline(x=mean_val, line_dash="dot", line_color="#ff9800", annotation_text=f"Mean: {mean_val:.1f}")
+        hist_fig.update_layout(height=500, width=None, title_font_size=18, font=dict(size=12, color='white'))
+        hist_fig.update_traces(marker_color='#2ab7ca', opacity=0.7)
+        st.plotly_chart(hist_fig, use_container_width=True)
 
-        # --- الرسم البياني 2: التوزيع التراكمي ---
-        st.subheader("2. Standard Cumulative (Less Than)")
-        fig2, ax2 = plt.subplots(figsize=(14, 7))
-        fig2.patch.set_facecolor('#0f1622')
-        ax2.set_facecolor('#1a2332')
-        sns.ecdfplot(rec_mm, color='#673ab7', linewidth=3, ax=ax2)
-        ax2.set_title('Cumulative Probability (Less Than)', fontweight='bold', fontsize=16, color='#ffb347')
-        ax2.set_xlabel('MMSTB', fontsize=14, color='white')
-        ax2.set_ylabel('Probability', fontsize=14, color='white')
-        ax2.tick_params(axis='both', colors='white', labelsize=11)
-        ax2.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: f'{x:.1f}'))
-        st.pyplot(fig2)
+        # ------------------ 2. Cumulative (Less Than) ------------------
+        sorted_data = np.sort(rec_mm)
+        cum_prob = np.arange(1, len(sorted_data)+1) / len(sorted_data)
+        cum_fig = go.Figure()
+        cum_fig.add_trace(go.Scatter(x=sorted_data, y=cum_prob, mode='lines', line=dict(color='#673ab7', width=3),
+                                     name='Cumulative Probability'))
+        cum_fig.update_layout(title='Standard Cumulative (Less Than)', xaxis_title='MMSTB', yaxis_title='Probability',
+                              template='plotly_dark', height=500, title_font_size=18, font=dict(color='white', size=12))
+        st.plotly_chart(cum_fig, use_container_width=True)
 
-        # --- الرسم البياني 3: احتمالية التجاوز ---
-        st.subheader("3. Exceedance Probability (Greater Than)")
-        fig3, ax3 = plt.subplots(figsize=(14, 7))
-        fig3.patch.set_facecolor('#0f1622')
-        ax3.set_facecolor('#1a2332')
-        sns.ecdfplot(rec_mm, color='#ff9800', linewidth=3, complementary=True, ax=ax3)
-        ax3.axhline(0.90, color='#e91e63', linestyle=':', alpha=0.7)
-        ax3.axvline(p90, color='#e91e63', linestyle='--', linewidth=1.5, label=f'P90: {p90:.1f}')
-        ax3.axhline(0.50, color='#4caf50', linestyle=':', alpha=0.7)
-        ax3.axvline(p50, color='#4caf50', linestyle='-', linewidth=1.5, label=f'P50: {p50:.1f}')
-        ax3.axhline(0.10, color='#2196f3', linestyle=':', alpha=0.7)
-        ax3.axvline(p10, color='#2196f3', linestyle='--', linewidth=1.5, label=f'P10: {p10:.1f}')
-        ax3.set_title('Exceedance Probability (Greater Than)', fontweight='bold', fontsize=16, color='#ffb347')
-        ax3.set_xlabel('MMSTB', fontsize=14, color='white')
-        ax3.set_ylabel('Probability', fontsize=14, color='white')
-        ax3.legend(fontsize=12, facecolor='#1a2332', labelcolor='white')
-        ax3.tick_params(axis='both', colors='white', labelsize=11)
-        ax3.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: f'{x:.1f}'))
-        st.pyplot(fig3)
+        # ------------------ 3. Exceedance Probability (Greater Than) ------------------
+        exceed_prob = 1 - cum_prob
+        exc_fig = go.Figure()
+        exc_fig.add_trace(go.Scatter(x=sorted_data, y=exceed_prob, mode='lines', line=dict(color='#ff9800', width=3),
+                                     name='Exceedance Probability'))
+        exc_fig.add_hline(y=0.90, line_dash="dot", line_color="#e91e63")
+        exc_fig.add_vline(x=p90, line_dash="dash", line_color="#e91e63", annotation_text="P90")
+        exc_fig.add_hline(y=0.50, line_dash="dot", line_color="#4caf50")
+        exc_fig.add_vline(x=p50, line_dash="solid", line_color="#4caf50", annotation_text="P50")
+        exc_fig.add_hline(y=0.10, line_dash="dot", line_color="#2196f3")
+        exc_fig.add_vline(x=p10, line_dash="dash", line_color="#2196f3", annotation_text="P10")
+        exc_fig.update_layout(title='Exceedance Probability (Greater Than)', xaxis_title='MMSTB',
+                              yaxis_title='Probability (Greater Than)', template='plotly_dark', height=500,
+                              title_font_size=18, font=dict(color='white', size=12))
+        st.plotly_chart(exc_fig, use_container_width=True)
 
-        # --- الرسم البياني 4: خريطة الحرارة (Heatmap) ---
-        st.subheader("4. Spearman Correlation Heatmap (Input Variables)")
-        fig4, ax4 = plt.subplots(figsize=(12, 8))
-        fig4.patch.set_facecolor('#0f1622')
-        ax4.set_facecolor('#1a2332')
+        # ------------------ 4. Heatmap (Spearman) ------------------
         input_corr = df.drop('Recoverable (MMSTB)', axis=1).corr(method='spearman')
-        sns.heatmap(input_corr, annot=True, cmap='coolwarm', center=0, fmt='.2f',
-                    linewidths=0.5, ax=ax4, annot_kws={'size': 12, 'color': 'white'})
-        ax4.set_title('Spearman Correlation Heatmap', fontweight='bold', fontsize=16, color='#ffb347')
-        ax4.tick_params(axis='x', rotation=45, colors='white', labelsize=11)
-        ax4.tick_params(axis='y', colors='white', labelsize=11)
-        st.pyplot(fig4)
+        heat_fig = px.imshow(input_corr, text_auto=True, aspect="auto", color_continuous_scale='RdBu',
+                             zmin=-1, zmax=1, title='Spearman Correlation Heatmap (Inputs)',
+                             template='plotly_dark')
+        heat_fig.update_layout(height=500, title_font_size=18, font=dict(color='white', size=12))
+        st.plotly_chart(heat_fig, use_container_width=True)
 
-        # --- الرسم البياني 5: Tornado chart ---
-        st.subheader("5. Tornado Chart - Sensitivity Analysis")
-        fig5, ax5 = plt.subplots(figsize=(12, 6))
-        fig5.patch.set_facecolor('#0f1622')
-        ax5.set_facecolor('#1a2332')
-        colors = ['#f44336' if x < 0 else '#4caf50' for x in corr_sorted.values]
-        ax5.barh(corr_sorted.index, corr_sorted.values, color=colors, edgecolor='black')
-        ax5.axvline(0, color='white', linewidth=1)
-        ax5.axvline(0.1, color='gray', linestyle='--', alpha=0.7)
-        ax5.axvline(-0.1, color='gray', linestyle='--', alpha=0.7)
-        ax5.set_title('Impact of Input Variables on Recoverable Oil', fontweight='bold', fontsize=16, color='#ffb347')
-        ax5.set_xlabel('Spearman Correlation Coefficient', fontsize=14, color='white')
-        ax5.tick_params(axis='both', colors='white', labelsize=11)
-        # إضافة قيم الارتباط على الأشرطة
-        for i, (_, val) in enumerate(corr_sorted.items()):
-            ax5.text(val + (0.03 if val >= 0 else -0.09), i, f'{val:.2f}',
-                     va='center', fontweight='bold', fontsize=11, color='white')
-        st.pyplot(fig5)
+        # ------------------ 5. Tornado Chart ------------------
+        tornado_df = pd.DataFrame({'Variable': corr_sorted.index, 'Correlation': corr_sorted.values})
+        tornado_df['Color'] = tornado_df['Correlation'].apply(lambda x: '#f44336' if x < 0 else '#4caf50')
+        tornado_fig = go.Figure()
+        tornado_fig.add_trace(go.Bar(y=tornado_df['Variable'], x=tornado_df['Correlation'], orientation='h',
+                                     marker_color=tornado_df['Color'], text=tornado_df['Correlation'].round(3),
+                                     textposition='outside', textfont=dict(color='white', size=12)))
+        tornado_fig.add_vline(x=0, line_color='white', line_width=1)
+        tornado_fig.add_vline(x=0.1, line_dash="dash", line_color='gray')
+        tornado_fig.add_vline(x=-0.1, line_dash="dash", line_color='gray')
+        tornado_fig.update_layout(title='Tornado Chart - Sensitivity Analysis', xaxis_title='Spearman Correlation',
+                                  xaxis_range=[-1, 1], template='plotly_dark', height=500, title_font_size=18,
+                                  font=dict(color='white', size=12))
+        st.plotly_chart(tornado_fig, use_container_width=True)
 
-        # --- الرسم البياني 6: Q-Q plot ---
-        st.subheader("6. Q-Q Plot vs Normal Distribution")
-        fig6, ax6 = plt.subplots(figsize=(12, 7))
-        fig6.patch.set_facecolor('#0f1622')
-        ax6.set_facecolor('#1a2332')
-        probplot(rec_mm, dist='norm', plot=ax6)
-        ax6.set_title('Q-Q Plot (Normality Check)', fontweight='bold', fontsize=16, color='#ffb347')
-        ax6.set_xlabel('Theoretical Quantiles', fontsize=14, color='white')
-        ax6.set_ylabel('Sample Quantiles (MMSTB)', fontsize=14, color='white')
-        ax6.tick_params(axis='both', colors='white', labelsize=11)
-        lines = ax6.get_lines()
-        if len(lines) >= 1:
-            lines[0].set_marker('o')
-            lines[0].set_markersize(3)
-            lines[0].set_color('#2ab7ca')
-        if len(lines) >= 2:
-            lines[1].set_color('#e91e63')
-            lines[1].set_linewidth(2)
-        st.pyplot(fig6)
+        # ------------------ 6. Q-Q Plot ------------------
+        theoretical_quantiles = stats.norm.ppf(np.linspace(0.01, 0.99, len(rec_mm)))
+        sample_quantiles = np.percentile(rec_mm, np.linspace(1, 99, len(rec_mm)))
+        qq_fig = go.Figure()
+        qq_fig.add_trace(go.Scatter(x=theoretical_quantiles, y=sample_quantiles, mode='markers',
+                                    marker=dict(color='#2ab7ca', size=3), name='Sample Quantiles'))
+        # خط المرجع
+        min_x, max_x = np.min(theoretical_quantiles), np.max(theoretical_quantiles)
+        min_y, max_y = np.min(sample_quantiles), np.max(sample_quantiles)
+        qq_fig.add_trace(go.Scatter(x=[min_x, max_x], y=[min_y, max_y], mode='lines',
+                                    line=dict(color='#e91e63', width=2, dash='dash'), name='Reference Line'))
+        qq_fig.update_layout(title='Q-Q Plot vs Normal Distribution', xaxis_title='Theoretical Quantiles',
+                             yaxis_title='Sample Quantiles (MMSTB)', template='plotly_dark', height=500,
+                             title_font_size=18, font=dict(color='white', size=12))
+        st.plotly_chart(qq_fig, use_container_width=True)
 
-        # --- أزرار الطباعة والتصدير ---
+        # ------------------ تقرير للطباعة ------------------
         st.markdown("---")
         st.subheader("📄 Export Report")
 
-        # تجميع جميع الرسوم في ملف PDF/HTML
-        # سنقوم بإنشاء HTML يحتوي على جميع الرسوم المحفوظة كصور
-        # حفظ كل شكل كصورة في الذاكرة
-        figs = [fig1, fig2, fig3, fig4, fig5, fig6]
-        img_strs = []
-        for f in figs:
-            buf = io.BytesIO()
-            f.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='#0f1622')
-            buf.seek(0)
-            img_base64 = base64.b64encode(buf.read()).decode()
-            img_strs.append(img_base64)
-
-        # إنشاء HTML للطباعة
-        print_html = f"""
+        # إعداد بيانات التقرير
+        report_html = f"""
         <!DOCTYPE html>
         <html>
-        <head>
-            <title>Volumetric Risk Analysis Report</title>
-            <style>
-                body {{ background-color: #0a0e1a; color: #e0e4f0; font-family: Arial, sans-serif; padding: 2rem; }}
-                h1, h2, h3 {{ color: #ffb347; }}
-                .metrics {{ display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem; }}
-                .metric {{ background: #16202e; border-radius: 10px; padding: 1rem; min-width: 150px; text-align: center; }}
-                .metric span {{ color: #ffb347; font-size: 1.2rem; font-weight: bold; }}
-                img {{ max-width: 100%; height: auto; margin-top: 1.5rem; border: 1px solid #2a3a50; }}
-                hr {{ border-color: #2a3a50; margin: 2rem 0; }}
-            </style>
+        <head><title>Volumetric Risk Analysis Report</title>
+        <style>
+            body {{ background-color: #0a0e1a; color: #e0e4f0; font-family: Arial, sans-serif; padding: 2rem; }}
+            h1, h2 {{ color: #ffb347; }}
+            .metrics {{ display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem; }}
+            .metric {{ background: #16202e; border-radius: 10px; padding: 1rem; min-width: 150px; text-align: center; }}
+            .metric span {{ color: #ffb347; font-size: 1.2rem; font-weight: bold; }}
+            hr {{ border-color: #2a3a50; }}
+        </style>
         </head>
         <body>
-            <h1>Volumetric Risk Analysis Report</h1>
-            <p><strong>Date:</strong> {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-            <p><strong>Iterations:</strong> {iterations:,} | <strong>Rock Volume:</strong> {rock_volume_m3:,.0f} m³</p>
-            <h2>Summary Statistics (MMSTB)</h2>
-            <div class="metrics">
-                <div class="metric">P90: {p90:.2f}</div>
-                <div class="metric">P50: {p50:.2f}</div>
-                <div class="metric">P10: {p10:.2f}</div>
-                <div class="metric">Mean: {mean_val:.2f}</div>
-                <div class="metric">Std Dev: {std_val:.2f}</div>
-                <div class="metric">CV: {cv_val:.3f}</div>
-                <div class="metric">Skewness: {skew_val:.3f}</div>
-                <div class="metric">VaR 95%: {var_95:.2f}</div>
-            </div>
-            <h2>Charts</h2>
-            <img src="data:image/png;base64,{img_strs[0]}">
-            <img src="data:image/png;base64,{img_strs[1]}">
-            <img src="data:image/png;base64,{img_strs[2]}">
-            <img src="data:image/png;base64,{img_strs[3]}">
-            <img src="data:image/png;base64,{img_strs[4]}">
-            <img src="data:image/png;base64,{img_strs[5]}">
-            <hr>
-            <p><em>Generated automatically by Streamlit Volumetric Risk Analysis Tool</em></p>
+        <h1>Volumetric Risk Analysis Report</h1>
+        <p><strong>Date:</strong> {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        <p><strong>Iterations:</strong> {iterations:,} | <strong>Rock Volume:</strong> {rock_volume_m3:,.0f} m³</p>
+        <h2>Summary Statistics (MMSTB)</h2>
+        <div class="metrics">
+            <div class="metric">P90: {p90:.2f}</div>
+            <div class="metric">P50: {p50:.2f}</div>
+            <div class="metric">P10: {p10:.2f}</div>
+            <div class="metric">Mean: {mean_val:.2f}</div>
+            <div class="metric">Std Dev: {std_val:.2f}</div>
+            <div class="metric">CV: {cv_val:.3f}</div>
+            <div class="metric">Skewness: {skew_val:.3f}</div>
+            <div class="metric">VaR 95%: {var_95:.2f}</div>
+        </div>
+        <p><em>Interactive charts are not displayed in this static HTML report. Please run the app for full interactivity.</em></p>
+        <hr>
+        <p>Generated by Streamlit Volumetric Risk Analysis Tool</p>
         </body>
         </html>
         """
+        st.download_button("📥 Download Report as HTML", report_html,
+                           f"volumetric_report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.html",
+                           "text/html", use_container_width=True)
 
-        st.download_button(
-            label="📥 Download Full Report as HTML (printable)",
-            data=print_html,
-            file_name=f"volumetric_report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.html",
-            mime="text/html",
-            use_container_width=True
-        )
-
+        # تحميل CSV
         csv_data = df[['Recoverable (MMSTB)']].head(1000).to_csv(index=False)
-        st.download_button("📊 Download results as CSV (first 1000 rows)", csv_data, "recoverable_results.csv", "text/csv")
+        st.download_button("📊 Download results as CSV", csv_data, "recoverable_results.csv", "text/csv")
 
 else:
     st.info("👈 Set parameters and click 'Run Simulation' to start.")
