@@ -16,36 +16,21 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ================== CSS مخصص للدارك مود بالكامل ==================
+# ================== CSS مخصص للدارك مود (مع تحسين لون الخطوط) ==================
 st.markdown("""
 <style>
-    /* خلفية الصفحة الرئيسية */
     .stApp {
         background-color: #0a0e1a;
-        color: #e0e4f0;
+        color: #f0f0f0;
     }
-    /* خلفية الشريط الجانبي */
     .css-1d391kg, .css-12oz5g7 {
         background-color: #131a2c;
     }
-    /* صناديق المدخلات */
     .stNumberInput input, .stSelectbox select {
         background-color: #1e2a3a;
         color: white;
         border-color: #2e3b4e;
     }
-    /* الكاردات */
-    .css-1r6slb0 {
-        background-color: #0f1622;
-        border-radius: 10px;
-        padding: 1rem;
-        border: 1px solid #2a3448;
-    }
-    /* العناوين */
-    h1, h2, h3, .stMarkdown {
-        color: #ffb347 !important;
-    }
-    /* أزرار */
     .stButton button {
         background-color: #ff8c42;
         color: #0a0e1a;
@@ -57,7 +42,6 @@ st.markdown("""
         background-color: #ffa05e;
         transform: scale(1.02);
     }
-    /* المتركات */
     .stMetric {
         background: linear-gradient(145deg, #16202e, #0e1422);
         border-radius: 1rem;
@@ -66,25 +50,14 @@ st.markdown("""
         border: 1px solid #2a3a50;
     }
     .stMetric label {
-        color: #a0b2c6 !important;
+        color: #dddddd !important;
     }
     .stMetric .stMetricValue {
         color: #ffb347 !important;
         font-size: 1.5rem !important;
     }
-    /* تبويب الطباعة */
-    .print-btn {
-        background-color: #28a745;
-        color: white;
-        padding: 0.5rem 1rem;
-        border-radius: 10px;
-        font-weight: bold;
-        border: none;
-        cursor: pointer;
-        margin-bottom: 1rem;
-    }
-    .print-btn:hover {
-        background-color: #218838;
+    h1, h2, h3, .stMarkdown {
+        color: #ffb347 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -178,7 +151,7 @@ if run_button:
         p10 = np.percentile(rec_mm, 90)
         mean_val = np.mean(rec_mm)
         std_val = np.std(rec_mm)
-        cv_val = std_val / mean_val
+        cv_val = std_val / mean_val if mean_val != 0 else 0
         skew_val = skew(rec_mm)
         var_95 = np.percentile(rec_mm, 5)
 
@@ -209,79 +182,99 @@ if run_button:
         corr_series = df.corr(method='spearman')['Recoverable (MMSTB)'].drop('Recoverable (MMSTB)')
         corr_sorted = corr_series.sort_values(key=abs)
 
-        # إنشاء الشكل مع 6 رسوم بيانية (صفين و 3 أعمدة)
-        fig, axs = plt.subplots(2, 3, figsize=(20, 12))
-        fig.patch.set_facecolor('#0f1622')
-        fig.suptitle("Volumetric Risk Analysis - Monte Carlo Simulation", fontsize=18, fontweight='bold', color='#ffb347')
-        ax1, ax2, ax3, ax4, ax5, ax6 = axs.flatten()
-
-        # تنسيق المحور x
-        formatter = ticker.FuncFormatter(lambda x, p: f"{x:.1f}")
-
-        # 1. الهيستوجرام + KDE
+        # --- الرسم البياني 1: هيستوجرام + KDE ---
+        st.subheader("1. Probability Distribution with KDE")
+        fig1, ax1 = plt.subplots(figsize=(14, 7))
+        fig1.patch.set_facecolor('#0f1622')
+        ax1.set_facecolor('#1a2332')
         sns.histplot(rec_mm, bins=80, kde=True, color='#2ab7ca', edgecolor='white', ax=ax1)
         ax1.axvline(p90, color='#e91e63', linestyle='--', linewidth=2, label=f'P90: {p90:.1f}')
         ax1.axvline(p50, color='#4caf50', linestyle='-', linewidth=2, label=f'P50: {p50:.1f}')
         ax1.axvline(p10, color='#2196f3', linestyle='--', linewidth=2, label=f'P10: {p10:.1f}')
         ax1.axvline(mean_val, color='#ff9800', linestyle=':', linewidth=2, label=f'Mean: {mean_val:.1f}')
-        ax1.set_title('1. Probability Distribution + KDE', fontweight='bold', color='#ffb347')
-        ax1.set_xlabel('MMSTB')
-        ax1.set_ylabel('Frequency')
-        ax1.legend()
-        ax1.xaxis.set_major_formatter(formatter)
-        ax1.set_facecolor('#1a2332')
+        ax1.set_title('Recoverable Oil Distribution (MMSTB)', fontweight='bold', fontsize=16, color='#ffb347')
+        ax1.set_xlabel('MMSTB', fontsize=14, color='white')
+        ax1.set_ylabel('Frequency', fontsize=14, color='white')
+        ax1.legend(fontsize=12, facecolor='#1a2332', labelcolor='white')
+        ax1.tick_params(axis='both', colors='white', labelsize=11)
+        ax1.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: f'{x:.1f}'))
+        st.pyplot(fig1)
 
-        # 2. التوزيع التراكمي العادي
-        sns.ecdfplot(rec_mm, color='#673ab7', linewidth=3, ax=ax2)
-        ax2.set_title('2. Standard Cumulative (Less Than)', fontweight='bold', color='#ffb347')
-        ax2.set_xlabel('MMSTB')
-        ax2.set_ylabel('Probability')
-        ax2.xaxis.set_major_formatter(formatter)
+        # --- الرسم البياني 2: التوزيع التراكمي ---
+        st.subheader("2. Standard Cumulative (Less Than)")
+        fig2, ax2 = plt.subplots(figsize=(14, 7))
+        fig2.patch.set_facecolor('#0f1622')
         ax2.set_facecolor('#1a2332')
+        sns.ecdfplot(rec_mm, color='#673ab7', linewidth=3, ax=ax2)
+        ax2.set_title('Cumulative Probability (Less Than)', fontweight='bold', fontsize=16, color='#ffb347')
+        ax2.set_xlabel('MMSTB', fontsize=14, color='white')
+        ax2.set_ylabel('Probability', fontsize=14, color='white')
+        ax2.tick_params(axis='both', colors='white', labelsize=11)
+        ax2.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: f'{x:.1f}'))
+        st.pyplot(fig2)
 
-        # 3. التوزيع التراكمي العكسي (احتمال التجاوز)
+        # --- الرسم البياني 3: احتمالية التجاوز ---
+        st.subheader("3. Exceedance Probability (Greater Than)")
+        fig3, ax3 = plt.subplots(figsize=(14, 7))
+        fig3.patch.set_facecolor('#0f1622')
+        ax3.set_facecolor('#1a2332')
         sns.ecdfplot(rec_mm, color='#ff9800', linewidth=3, complementary=True, ax=ax3)
         ax3.axhline(0.90, color='#e91e63', linestyle=':', alpha=0.7)
-        ax3.axvline(p90, color='#e91e63', linestyle='--', linewidth=1.5, label='P90')
+        ax3.axvline(p90, color='#e91e63', linestyle='--', linewidth=1.5, label=f'P90: {p90:.1f}')
         ax3.axhline(0.50, color='#4caf50', linestyle=':', alpha=0.7)
-        ax3.axvline(p50, color='#4caf50', linestyle='-', linewidth=1.5, label='P50')
+        ax3.axvline(p50, color='#4caf50', linestyle='-', linewidth=1.5, label=f'P50: {p50:.1f}')
         ax3.axhline(0.10, color='#2196f3', linestyle=':', alpha=0.7)
-        ax3.axvline(p10, color='#2196f3', linestyle='--', linewidth=1.5, label='P10')
-        ax3.set_title('3. Exceedance Probability (Greater Than)', fontweight='bold', color='#ffb347')
-        ax3.set_xlabel('MMSTB')
-        ax3.set_ylabel('Probability')
-        ax3.legend()
-        ax3.xaxis.set_major_formatter(formatter)
-        ax3.set_facecolor('#1a2332')
+        ax3.axvline(p10, color='#2196f3', linestyle='--', linewidth=1.5, label=f'P10: {p10:.1f}')
+        ax3.set_title('Exceedance Probability (Greater Than)', fontweight='bold', fontsize=16, color='#ffb347')
+        ax3.set_xlabel('MMSTB', fontsize=14, color='white')
+        ax3.set_ylabel('Probability', fontsize=14, color='white')
+        ax3.legend(fontsize=12, facecolor='#1a2332', labelcolor='white')
+        ax3.tick_params(axis='both', colors='white', labelsize=11)
+        ax3.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: f'{x:.1f}'))
+        st.pyplot(fig3)
 
-        # 4. خريطة حرارة ارتباطات المتغيرات
+        # --- الرسم البياني 4: خريطة الحرارة (Heatmap) ---
+        st.subheader("4. Spearman Correlation Heatmap (Input Variables)")
+        fig4, ax4 = plt.subplots(figsize=(12, 8))
+        fig4.patch.set_facecolor('#0f1622')
+        ax4.set_facecolor('#1a2332')
         input_corr = df.drop('Recoverable (MMSTB)', axis=1).corr(method='spearman')
         sns.heatmap(input_corr, annot=True, cmap='coolwarm', center=0, fmt='.2f',
-                    linewidths=0.5, ax=ax4, annot_kws={'size': 10},
-                    cbar_kws={'label': 'Spearman Correlation'})
-        ax4.set_title('4. Spearman Correlation Heatmap (Inputs)', fontweight='bold', color='#ffb347')
-        ax4.tick_params(axis='x', rotation=45)
-        ax4.set_facecolor('#1a2332')
+                    linewidths=0.5, ax=ax4, annot_kws={'size': 12, 'color': 'white'})
+        ax4.set_title('Spearman Correlation Heatmap', fontweight='bold', fontsize=16, color='#ffb347')
+        ax4.tick_params(axis='x', rotation=45, colors='white', labelsize=11)
+        ax4.tick_params(axis='y', colors='white', labelsize=11)
+        st.pyplot(fig4)
 
-        # 5. مخطط تورنادو (الحساسية)
+        # --- الرسم البياني 5: Tornado chart ---
+        st.subheader("5. Tornado Chart - Sensitivity Analysis")
+        fig5, ax5 = plt.subplots(figsize=(12, 6))
+        fig5.patch.set_facecolor('#0f1622')
+        ax5.set_facecolor('#1a2332')
         colors = ['#f44336' if x < 0 else '#4caf50' for x in corr_sorted.values]
         ax5.barh(corr_sorted.index, corr_sorted.values, color=colors, edgecolor='black')
         ax5.axvline(0, color='white', linewidth=1)
         ax5.axvline(0.1, color='gray', linestyle='--', alpha=0.7)
         ax5.axvline(-0.1, color='gray', linestyle='--', alpha=0.7)
-        ax5.set_title('5. Tornado Chart - Sensitivity Analysis', fontweight='bold', color='#ffb347')
-        ax5.set_xlabel('Spearman Correlation Coefficient (Impact on Recoverable Oil)')
-        ax5.set_xlim(-1, 1)
+        ax5.set_title('Impact of Input Variables on Recoverable Oil', fontweight='bold', fontsize=16, color='#ffb347')
+        ax5.set_xlabel('Spearman Correlation Coefficient', fontsize=14, color='white')
+        ax5.tick_params(axis='both', colors='white', labelsize=11)
+        # إضافة قيم الارتباط على الأشرطة
         for i, (_, val) in enumerate(corr_sorted.items()):
             ax5.text(val + (0.03 if val >= 0 else -0.09), i, f'{val:.2f}',
-                     va='center', fontweight='bold', fontsize=10, color='white')
-        ax5.set_facecolor('#1a2332')
+                     va='center', fontweight='bold', fontsize=11, color='white')
+        st.pyplot(fig5)
 
-        # 6. Q-Q plot مقابل التوزيع الطبيعي
+        # --- الرسم البياني 6: Q-Q plot ---
+        st.subheader("6. Q-Q Plot vs Normal Distribution")
+        fig6, ax6 = plt.subplots(figsize=(12, 7))
+        fig6.patch.set_facecolor('#0f1622')
+        ax6.set_facecolor('#1a2332')
         probplot(rec_mm, dist='norm', plot=ax6)
-        ax6.set_title('6. Q-Q Plot vs Normal Distribution', fontweight='bold', color='#ffb347')
-        ax6.set_xlabel('Theoretical Quantiles')
-        ax6.set_ylabel('Sample Quantiles (MMSTB)')
+        ax6.set_title('Q-Q Plot (Normality Check)', fontweight='bold', fontsize=16, color='#ffb347')
+        ax6.set_xlabel('Theoretical Quantiles', fontsize=14, color='white')
+        ax6.set_ylabel('Sample Quantiles (MMSTB)', fontsize=14, color='white')
+        ax6.tick_params(axis='both', colors='white', labelsize=11)
         lines = ax6.get_lines()
         if len(lines) >= 1:
             lines[0].set_marker('o')
@@ -290,21 +283,23 @@ if run_button:
         if len(lines) >= 2:
             lines[1].set_color('#e91e63')
             lines[1].set_linewidth(2)
-        ax6.set_facecolor('#1a2332')
+        st.pyplot(fig6)
 
-        plt.tight_layout()
-        st.pyplot(fig)
-
-        # زر الطباعة / تحميل التقرير
+        # --- أزرار الطباعة والتصدير ---
         st.markdown("---")
         st.subheader("📄 Export Report")
 
-        # تحويل الرسم البياني الحالي إلى HTML مؤقت للطباعة
-        # سنقوم بإنشاء نسخة من الشكل بصيغة SVG ووضعها في صفحة طباعة
-        img_data = io.BytesIO()
-        fig.savefig(img_data, format='png', dpi=150, bbox_inches='tight', facecolor='#0f1622')
-        img_data.seek(0)
-        img_base64 = base64.b64encode(img_data.getvalue()).decode()
+        # تجميع جميع الرسوم في ملف PDF/HTML
+        # سنقوم بإنشاء HTML يحتوي على جميع الرسوم المحفوظة كصور
+        # حفظ كل شكل كصورة في الذاكرة
+        figs = [fig1, fig2, fig3, fig4, fig5, fig6]
+        img_strs = []
+        for f in figs:
+            buf = io.BytesIO()
+            f.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='#0f1622')
+            buf.seek(0)
+            img_base64 = base64.b64encode(buf.read()).decode()
+            img_strs.append(img_base64)
 
         # إنشاء HTML للطباعة
         print_html = f"""
@@ -318,8 +313,8 @@ if run_button:
                 .metrics {{ display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem; }}
                 .metric {{ background: #16202e; border-radius: 10px; padding: 1rem; min-width: 150px; text-align: center; }}
                 .metric span {{ color: #ffb347; font-size: 1.2rem; font-weight: bold; }}
-                img {{ max-width: 100%; height: auto; margin-top: 1rem; }}
-                hr {{ border-color: #2a3a50; }}
+                img {{ max-width: 100%; height: auto; margin-top: 1.5rem; border: 1px solid #2a3a50; }}
+                hr {{ border-color: #2a3a50; margin: 2rem 0; }}
             </style>
         </head>
         <body>
@@ -338,39 +333,26 @@ if run_button:
                 <div class="metric">VaR 95%: {var_95:.2f}</div>
             </div>
             <h2>Charts</h2>
-            <img src="data:image/png;base64,{img_base64}" alt="Monte Carlo Charts">
+            <img src="data:image/png;base64,{img_strs[0]}">
+            <img src="data:image/png;base64,{img_strs[1]}">
+            <img src="data:image/png;base64,{img_strs[2]}">
+            <img src="data:image/png;base64,{img_strs[3]}">
+            <img src="data:image/png;base64,{img_strs[4]}">
+            <img src="data:image/png;base64,{img_strs[5]}">
             <hr>
             <p><em>Generated automatically by Streamlit Volumetric Risk Analysis Tool</em></p>
         </body>
         </html>
         """
 
-        # زر لتحميل ملف HTML (يمكن فتحه وطباعته)
         st.download_button(
-            label="📥 Download Report as HTML (printable)",
+            label="📥 Download Full Report as HTML (printable)",
             data=print_html,
             file_name=f"volumetric_report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.html",
             mime="text/html",
             use_container_width=True
         )
 
-        # زر لفتح نافذة الطباعة المباشرة (عبر JavaScript)
-        print_js = f"""
-        <script>
-        function printReport() {{
-            var printWindow = window.open('', '_blank');
-            printWindow.document.write(`{print_html.replace('`', '\\`')}`);
-            printWindow.document.close();
-            printWindow.print();
-        }}
-        </script>
-        <button class="print-btn" onclick="printReport()" style="background-color:#28a745; color:white; padding:0.5rem 1rem; border-radius:10px; border:none; cursor:pointer;">
-            🖨️ Print Report Directly
-        </button>
-        """
-        st.components.v1.html(print_js, height=80)
-
-        # زر لتحميل النتائج (CSV)
         csv_data = df[['Recoverable (MMSTB)']].head(1000).to_csv(index=False)
         st.download_button("📊 Download results as CSV (first 1000 rows)", csv_data, "recoverable_results.csv", "text/csv")
 
