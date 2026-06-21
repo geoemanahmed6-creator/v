@@ -382,7 +382,7 @@ if st.session_state.data_stored:
     st.subheader("📄 Export Report")
 
     input_data = {
-        "Parameter": ["Rock Volume (m³)", "NTG", "Porosity (φ)", "Sw", "Recovery Factor", "Boi"],
+        "Parameter": ["Volume (m³)", "NTG", "Porosity (φ)", "Sw", "RF", "Boi"],
         "Min": [f"{rock_min:,.0f}", f"{ntg_min:.2f}", f"{por_min:.2f}", f"{sw_min:.2f}", f"{rf_min:.2f}", f"{boi_min:.2f}"],
         "Med": [f"{rock_med:,.0f}", f"{ntg_med:.2f}", f"{por_med:.2f}", f"{sw_med:.2f}", f"{rf_med:.2f}", f"{boi_med:.2f}"],
         "Max": [f"{rock_max:,.0f}", f"{ntg_max:.2f}", f"{por_max:.2f}", f"{sw_max:.2f}", f"{rf_max:.2f}", f"{boi_max:.2f}"],
