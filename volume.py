@@ -483,6 +483,3 @@ report_html = f"""
 st.download_button("📑 Download Report (HTML)", report_html, "report.html", "text/html", use_container_width=True)
 csv_data = pd.DataFrame({"Recoverable (MMSTB)": rec}).to_csv(index=False)
 st.download_button("📊 Download CSV", csv_data, "results.csv", "text/csv")
-else:
-    apply_base_css(st.session_state.dark_mode)
-    st.info("👈 Set parameters and click 'Run Simulation' to start.")
