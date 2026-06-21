@@ -89,7 +89,7 @@ def gen_sample(dist, mn, md, mx, size):
     else:
         return triangular_sample(mn, md, mx, size)
 
-# ========== التحقق ==========
+# ========== التحقق (تم تعديله للسماح بتساوي القيم) ==========
 def validate_inputs(rock_mn, rock_md, rock_mx, ntg_mn, ntg_md, ntg_mx,
                     por_mn, por_md, por_mx, sw_mn, sw_md, sw_mx,
                     rf_mn, rf_md, rf_mx, boi_mn, boi_md, boi_mx):
@@ -106,6 +106,7 @@ def validate_inputs(rock_mn, rock_md, rock_mx, ntg_mn, ntg_md, ntg_mx,
         if not (0 <= mn <= 1 and 0 <= md <= 1 and 0 <= mx <= 1):
             st.error(f"{name}: all values between 0 and 1")
             valid = False
+    # تم تعديل الشرط للسماح بالتساوي (<=) بدلاً من (<) فقط
     for name, mn, md, mx in [("Rock Volume", rock_mn, rock_md, rock_mx),
                              ("NTG", ntg_mn, ntg_md, ntg_mx),
                              ("Porosity", por_mn, por_md, por_mx),
@@ -113,7 +114,8 @@ def validate_inputs(rock_mn, rock_md, rock_mx, ntg_mn, ntg_md, ntg_mx,
                              ("RF", rf_mn, rf_md, rf_mx),
                              ("Boi", boi_mn, boi_md, boi_mx)]:
         if not (mn <= md <= mx):
-            st.warning(f"{name}: Min ≤ Med ≤ Max not satisfied")
+            st.warning(f"{name}: Min ≤ Med ≤ Max not satisfied (values can be equal).")
+            # لا نمنع التشغيل، فقط نعطي تحذيرًا لأن التساوي مسموح
     return valid
 
 # ========== CSS ديناميكي مع تحسين الكروت ==========
@@ -250,13 +252,13 @@ with col2:
     ntg_max = st.number_input("Max", value=0.42, min_value=0.0, max_value=1.0, step=0.01, key="ntg_max")
     ntg_dist = st.selectbox("Dist", dist_options, key="ntg_dist")
 with col3:
-    st.subheader("🧫 Porosity")
+    st.subheader("φ Porosity")  # تغيير الاسم إلى رمز phi
     por_min = st.number_input("Min", value=0.09, min_value=0.0, max_value=1.0, step=0.01, key="por_min")
     por_med = st.number_input("Med", value=0.12, min_value=0.0, max_value=1.0, step=0.01, key="por_med")
     por_max = st.number_input("Max", value=0.18, min_value=0.0, max_value=1.0, step=0.01, key="por_max")
     por_dist = st.selectbox("Dist", dist_options, key="por_dist")
 with col4:
-    st.subheader("💧 Water Saturation")
+    st.subheader("Sw")  # تغيير الاسم إلى Sw
     sw_min = st.number_input("Min", value=0.30, min_value=0.0, max_value=1.0, step=0.01, key="sw_min")
     sw_med = st.number_input("Med", value=0.40, min_value=0.0, max_value=1.0, step=0.01, key="sw_med")
     sw_max = st.number_input("Max", value=0.48, min_value=0.0, max_value=1.0, step=0.01, key="sw_max")
@@ -380,7 +382,7 @@ if st.session_state.data_stored:
     st.subheader("📄 Export Report")
 
     input_data = {
-        "Parameter": ["Rock Volume (m³)", "NTG", "Porosity", "Water Saturation", "Recovery Factor", "Boi"],
+        "Parameter": ["Rock Volume (m³)", "NTG", "Porosity (φ)", "Sw", "Recovery Factor", "Boi"],
         "Min": [f"{rock_min:,.0f}", f"{ntg_min:.2f}", f"{por_min:.2f}", f"{sw_min:.2f}", f"{rf_min:.2f}", f"{boi_min:.2f}"],
         "Med": [f"{rock_med:,.0f}", f"{ntg_med:.2f}", f"{por_med:.2f}", f"{sw_med:.2f}", f"{rf_med:.2f}", f"{boi_med:.2f}"],
         "Max": [f"{rock_max:,.0f}", f"{ntg_max:.2f}", f"{por_max:.2f}", f"{sw_max:.2f}", f"{rf_max:.2f}", f"{boi_max:.2f}"],
