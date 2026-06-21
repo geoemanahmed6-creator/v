@@ -16,7 +16,7 @@ if "data_stored" not in st.session_state:
     st.session_state.mean_val = st.session_state.std_val = st.session_state.cv_val = None
     st.session_state.skew_val = st.session_state.var95 = None
     st.session_state.ntg = st.session_state.porosity = st.session_state.sw = None
-    st.session_state.rf = st.session_state.boi = st.session_state.rock_volume = None
+    st.session_state.rf = st.session_state.boi = st.session_state.volume = None
 
 if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = True
@@ -50,32 +50,57 @@ with st.sidebar:
     iterations = st.number_input("Iterations", min_value=1000, max_value=100000, value=50000, step=1000, key="iter_input")
     st.info("📌 Distributions: Triangular, Normal, Uniform, Lognormal, PERT")
 
-# ========== دوال التوزيعات ==========
+# ========== دوال التوزيعات مع معالجة الحالة الثابتة ==========
+def constant_sample(value, size):
+    """إرجاع مصفوفة من القيمة الثابتة"""
+    return np.full(size, value)
+
 def triangular_sample(mn, md, mx, size):
+    if mn == md == mx:
+        return constant_sample(mn, size)
     return np.random.triangular(mn, md, mx, size)
 
 def normal_sample(mn, md, mx, size):
+    if mn == md == mx:
+        return constant_sample(mn, size)
     mean = md
     std = (mx - mn) / 4
+    if std == 0:
+        return constant_sample(mn, size)
     s = np.random.normal(mean, std, size)
     return np.clip(s, mn, mx)
 
 def uniform_sample(mn, mx, size):
+    if mn == mx:
+        return constant_sample(mn, size)
     return np.random.uniform(mn, mx, size)
 
 def lognormal_sample(mn, md, mx, size):
+    if mn == md == mx:
+        return constant_sample(mn, size)
     mean_log = np.log(md)
     sigma_log = (np.log(mx) - np.log(mn)) / 6
+    if sigma_log == 0:
+        return constant_sample(mn, size)
     s = np.random.lognormal(mean_log, sigma_log, size)
     return np.clip(s, mn, mx)
 
 def pert_sample(mn, md, mx, size):
+    if mn == md == mx:
+        return constant_sample(mn, size)
     alpha = 1 + 4 * (md - mn) / (mx - mn)
     beta = 1 + 4 * (mx - md) / (mx - mn)
+    # تجنب القسمة على صفر
+    if alpha <= 0 or beta <= 0:
+        return constant_sample((mn + md + mx) / 3, size)
     b = np.random.beta(alpha, beta, size)
     return mn + b * (mx - mn)
 
 def gen_sample(dist, mn, md, mx, size):
+    # معالجة الحالة الثابتة أولاً
+    if mn == md == mx:
+        return constant_sample(mn, size)
+    
     if dist == "Triangular":
         return triangular_sample(mn, md, mx, size)
     elif dist == "Normal":
@@ -89,33 +114,32 @@ def gen_sample(dist, mn, md, mx, size):
     else:
         return triangular_sample(mn, md, mx, size)
 
-# ========== التحقق (تم تعديله للسماح بتساوي القيم) ==========
-def validate_inputs(rock_mn, rock_md, rock_mx, ntg_mn, ntg_md, ntg_mx,
+# ========== التحقق ==========
+def validate_inputs(vol_mn, vol_md, vol_mx, ntg_mn, ntg_md, ntg_mx,
                     por_mn, por_md, por_mx, sw_mn, sw_md, sw_mx,
                     rf_mn, rf_md, rf_mx, boi_mn, boi_md, boi_mx):
     valid = True
-    for name, mn, md, mx in [("Rock Volume", rock_mn, rock_md, rock_mx),
+    for name, mn, md, mx in [("Volume", vol_mn, vol_md, vol_mx),
                              ("Boi", boi_mn, boi_md, boi_mx)]:
         if mn <= 0 or md <= 0 or mx <= 0:
             st.error(f"{name}: all values must be > 0")
             valid = False
     for name, mn, md, mx in [("NTG", ntg_mn, ntg_md, ntg_mx),
-                             ("Porosity", por_mn, por_md, por_mx),
+                             ("φ (Porosity)", por_mn, por_md, por_mx),
                              ("Sw", sw_mn, sw_md, sw_mx),
                              ("RF", rf_mn, rf_md, rf_mx)]:
         if not (0 <= mn <= 1 and 0 <= md <= 1 and 0 <= mx <= 1):
             st.error(f"{name}: all values between 0 and 1")
             valid = False
-    # تم تعديل الشرط للسماح بالتساوي (<=) بدلاً من (<) فقط
-    for name, mn, md, mx in [("Rock Volume", rock_mn, rock_md, rock_mx),
+    # تحذير فقط إذا كانت القيم خارج الترتيب (وليس منع التشغيل)
+    for name, mn, md, mx in [("Volume", vol_mn, vol_md, vol_mx),
                              ("NTG", ntg_mn, ntg_md, ntg_mx),
-                             ("Porosity", por_mn, por_md, por_mx),
+                             ("φ", por_mn, por_md, por_mx),
                              ("Sw", sw_mn, sw_md, sw_mx),
                              ("RF", rf_mn, rf_md, rf_mx),
                              ("Boi", boi_mn, boi_md, boi_mx)]:
         if not (mn <= md <= mx):
-            st.warning(f"{name}: Min ≤ Med ≤ Max not satisfied (values can be equal).")
-            # لا نمنع التشغيل، فقط نعطي تحذيرًا لأن التساوي مسموح
+            st.warning(f"{name}: Min ≤ Med ≤ Max not satisfied (will still run)")
     return valid
 
 # ========== CSS ديناميكي مع تحسين الكروت ==========
@@ -137,9 +161,7 @@ def apply_base_css(is_dark):
     
     st.markdown(f"""
     <style>
-        .stApp {{
-            background-color: {bg};
-        }}
+        .stApp {{ background-color: {bg}; }}
         .stMetric {{
             background: {card_bg};
             border-radius: 20px;
@@ -202,15 +224,15 @@ def apply_base_css(is_dark):
 # ========== تنفيذ المحاكاة ==========
 def run_simulation():
     np.random.seed(42)
-    rock_m3 = gen_sample(rock_dist, rock_min, rock_med, rock_max, iterations)
-    rock_acft = rock_m3 * 0.0008107132
+    volume_m3 = gen_sample(vol_dist, vol_min, vol_med, vol_max, iterations)
+    volume_acft = volume_m3 * 0.0008107132
     ntg = gen_sample(ntg_dist, ntg_min, ntg_med, ntg_max, iterations)
     por = gen_sample(por_dist, por_min, por_med, por_max, iterations)
     sw = gen_sample(sw_dist, sw_min, sw_med, sw_max, iterations)
     rf = gen_sample(rf_dist, rf_min, rf_med, rf_max, iterations)
     boi = gen_sample(boi_dist, boi_min, boi_med, boi_max, iterations)
 
-    ooip = (7758 * rock_acft * ntg * por * (1 - sw)) / boi
+    ooip = (7758 * volume_acft * ntg * por * (1 - sw)) / boi
     rec = ooip * rf / 1e6
 
     st.session_state.rec_mm = rec
@@ -227,7 +249,7 @@ def run_simulation():
     st.session_state.sw = sw
     st.session_state.rf = rf
     st.session_state.boi = boi
-    st.session_state.rock_volume = rock_m3
+    st.session_state.volume = volume_m3
     st.session_state.data_stored = True
 
 # ========== واجهة الإدخال ==========
@@ -239,36 +261,42 @@ st.markdown("### <span style='color:#c0392b; font-weight:bold;'>Monte Carlo Simu
 dist_options = ["Triangular", "Normal", "Uniform", "Lognormal", "PERT"]
 
 col1, col2, col3, col4, col5, col6 = st.columns(6)
+
 with col1:
-    st.subheader("🗻 Rock Volume")
-    rock_min = st.number_input("Min (m³)", value=70_000_000.0, min_value=10000.0, step=1_000_000.0, key="rock_min")
-    rock_med = st.number_input("Med (m³)", value=80_576_000.0, min_value=10000.0, step=1_000_000.0, key="rock_med")
-    rock_max = st.number_input("Max (m³)", value=90_000_000.0, min_value=10000.0, step=1_000_000.0, key="rock_max")
-    rock_dist = st.selectbox("Dist", dist_options, key="rock_dist")
+    st.subheader("🗻 Volume")
+    vol_min = st.number_input("Min (m³)", value=70_000_000.0, min_value=10000.0, step=1_000_000.0, key="vol_min")
+    vol_med = st.number_input("Med (m³)", value=80_576_000.0, min_value=10000.0, step=1_000_000.0, key="vol_med")
+    vol_max = st.number_input("Max (m³)", value=90_000_000.0, min_value=10000.0, step=1_000_000.0, key="vol_max")
+    vol_dist = st.selectbox("Dist", dist_options, key="vol_dist")
+
 with col2:
     st.subheader("📊 NTG")
     ntg_min = st.number_input("Min", value=0.17, min_value=0.0, max_value=1.0, step=0.01, key="ntg_min")
     ntg_med = st.number_input("Med", value=0.30, min_value=0.0, max_value=1.0, step=0.01, key="ntg_med")
     ntg_max = st.number_input("Max", value=0.42, min_value=0.0, max_value=1.0, step=0.01, key="ntg_max")
     ntg_dist = st.selectbox("Dist", dist_options, key="ntg_dist")
+
 with col3:
-    st.subheader("φ Porosity")  # تغيير الاسم إلى رمز phi
+    st.subheader("🧫 φ")
     por_min = st.number_input("Min", value=0.09, min_value=0.0, max_value=1.0, step=0.01, key="por_min")
     por_med = st.number_input("Med", value=0.12, min_value=0.0, max_value=1.0, step=0.01, key="por_med")
     por_max = st.number_input("Max", value=0.18, min_value=0.0, max_value=1.0, step=0.01, key="por_max")
     por_dist = st.selectbox("Dist", dist_options, key="por_dist")
+
 with col4:
-    st.subheader("Sw")  # تغيير الاسم إلى Sw
+    st.subheader("💧 Sw")
     sw_min = st.number_input("Min", value=0.30, min_value=0.0, max_value=1.0, step=0.01, key="sw_min")
     sw_med = st.number_input("Med", value=0.40, min_value=0.0, max_value=1.0, step=0.01, key="sw_med")
     sw_max = st.number_input("Max", value=0.48, min_value=0.0, max_value=1.0, step=0.01, key="sw_max")
     sw_dist = st.selectbox("Dist", dist_options, key="sw_dist")
+
 with col5:
-    st.subheader("📈 Recovery Factor")
+    st.subheader("📈 RF")
     rf_min = st.number_input("Min", value=0.16, min_value=0.0, max_value=1.0, step=0.01, key="rf_min")
     rf_med = st.number_input("Med", value=0.18, min_value=0.0, max_value=1.0, step=0.01, key="rf_med")
     rf_max = st.number_input("Max", value=0.22, min_value=0.0, max_value=1.0, step=0.01, key="rf_max")
     rf_dist = st.selectbox("Dist", dist_options, key="rf_dist")
+
 with col6:
     st.subheader("⚙️ Boi")
     boi_min = st.number_input("Min", value=1.15, min_value=0.01, step=0.01, key="boi_min")
@@ -277,7 +305,7 @@ with col6:
     boi_dist = st.selectbox("Dist", dist_options, key="boi_dist")
 
 if st.button("🚀 Run Simulation", type="primary", use_container_width=True):
-    if validate_inputs(rock_min, rock_med, rock_max,
+    if validate_inputs(vol_min, vol_med, vol_max,
                        ntg_min, ntg_med, ntg_max,
                        por_min, por_med, por_max,
                        sw_min, sw_med, sw_max,
@@ -293,9 +321,9 @@ if st.session_state.data_stored:
     p90, p50, p10 = st.session_state.p90, st.session_state.p50, st.session_state.p10
     mn, sd, cv, sk, v95 = (st.session_state.mean_val, st.session_state.std_val,
                            st.session_state.cv_val, st.session_state.skew_val, st.session_state.var95)
-    ntg, por, sw, rf, boi, rock = (st.session_state.ntg, st.session_state.porosity,
-                                   st.session_state.sw, st.session_state.rf,
-                                   st.session_state.boi, st.session_state.rock_volume)
+    ntg, por, sw, rf, boi, vol = (st.session_state.ntg, st.session_state.porosity,
+                                  st.session_state.sw, st.session_state.rf,
+                                  st.session_state.boi, st.session_state.volume)
 
     is_dark = st.session_state.dark_mode
     template = "plotly_dark" if is_dark else "plotly_white"
@@ -313,7 +341,7 @@ if st.session_state.data_stored:
     colg.metric("Skewness", f"{sk:.3f}")
     colh.metric("VaR 95%", f"{v95:.2f}")
 
-    # الرسوم البيانية (كما هي)
+    # الرسوم البيانية
     if np.std(rec) == 0:
         rec_kde = rec + np.random.normal(0, 1e-6, len(rec))
     else:
@@ -351,13 +379,14 @@ if st.session_state.data_stored:
     fig3.update_layout(title="3. Exceedance Probability", template=template, height=500)
     st.plotly_chart(fig3, use_container_width=True)
 
-    df_corr = pd.DataFrame({'Rock': rock, 'NTG': ntg, 'Por': por, 'Sw': sw, 'RF': rf, 'Boi': boi})
+    # Heatmap (مع التسميات الجديدة)
+    df_corr = pd.DataFrame({'Volume': vol, 'NTG': ntg, 'φ': por, 'Sw': sw, 'RF': rf, 'Boi': boi})
     corr_mat = df_corr.corr(method='spearman')
     fig4 = px.imshow(corr_mat, text_auto=True, aspect="auto", color_continuous_scale=st.session_state.heatmap_colorscale, zmin=-1, zmax=1, title="4. Spearman Correlation Heatmap")
     fig4.update_layout(template=template, height=500)
     st.plotly_chart(fig4, use_container_width=True)
 
-    df_all = pd.DataFrame({'Rock': rock, 'NTG': ntg, 'Por': por, 'Sw': sw, 'RF': rf, 'Boi': boi, 'Rec': rec})
+    df_all = pd.DataFrame({'Volume': vol, 'NTG': ntg, 'φ': por, 'Sw': sw, 'RF': rf, 'Boi': boi, 'Rec': rec})
     corr_rec = df_all.corr(method='spearman')['Rec'].drop('Rec').sort_values(key=abs)
     tdf = pd.DataFrame({'Var': corr_rec.index, 'Corr': corr_rec.values})
     tdf['Color'] = tdf['Corr'].apply(lambda x: st.session_state.tornado_pos_color if x>=0 else st.session_state.tornado_neg_color)
@@ -382,11 +411,11 @@ if st.session_state.data_stored:
     st.subheader("📄 Export Report")
 
     input_data = {
-        "Parameter": ["Volume (m³)", "NTG", "Porosity (φ)", "Sw", "RF", "Boi"],
-        "Min": [f"{rock_min:,.0f}", f"{ntg_min:.2f}", f"{por_min:.2f}", f"{sw_min:.2f}", f"{rf_min:.2f}", f"{boi_min:.2f}"],
-        "Med": [f"{rock_med:,.0f}", f"{ntg_med:.2f}", f"{por_med:.2f}", f"{sw_med:.2f}", f"{rf_med:.2f}", f"{boi_med:.2f}"],
-        "Max": [f"{rock_max:,.0f}", f"{ntg_max:.2f}", f"{por_max:.2f}", f"{sw_max:.2f}", f"{rf_max:.2f}", f"{boi_max:.2f}"],
-        "Distribution": [rock_dist, ntg_dist, por_dist, sw_dist, rf_dist, boi_dist]
+        "Parameter": ["Volume (m³)", "NTG", "φ (Porosity)", "Sw", "RF", "Boi"],
+        "Min": [f"{vol_min:,.0f}", f"{ntg_min:.2f}", f"{por_min:.2f}", f"{sw_min:.2f}", f"{rf_min:.2f}", f"{boi_min:.2f}"],
+        "Med": [f"{vol_med:,.0f}", f"{ntg_med:.2f}", f"{por_med:.2f}", f"{sw_med:.2f}", f"{rf_med:.2f}", f"{boi_med:.2f}"],
+        "Max": [f"{vol_max:,.0f}", f"{ntg_max:.2f}", f"{por_max:.2f}", f"{sw_max:.2f}", f"{rf_max:.2f}", f"{boi_max:.2f}"],
+        "Distribution": [vol_dist, ntg_dist, por_dist, sw_dist, rf_dist, boi_dist]
     }
     input_df = pd.DataFrame(input_data)
     csv_input = input_df.to_csv(index=False)
