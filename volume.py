@@ -48,11 +48,10 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("## ⚙️ Simulation")
     iterations = st.number_input("Iterations", min_value=1000, max_value=100000, value=50000, step=1000, key="iter_input")
-    st.info("📌 Distributions: Triangular, Normal, Uniform, Lognormal, PERT")
+    st.info("📌 Normal distribution uses Mean & Std Dev. Others use Min, Med, Max.")
 
-# ========== دوال التوزيعات مع معالجة الحالة الثابتة ==========
+# ========== دوال التوزيعات ==========
 def constant_sample(value, size):
-    """إرجاع مصفوفة من القيمة الثابتة"""
     return np.full(size, value)
 
 def triangular_sample(mn, md, mx, size):
@@ -60,15 +59,13 @@ def triangular_sample(mn, md, mx, size):
         return constant_sample(mn, size)
     return np.random.triangular(mn, md, mx, size)
 
-def normal_sample(mn, md, mx, size):
-    if mn == md == mx:
-        return constant_sample(mn, size)
-    mean = md
-    std = (mx - mn) / 4
+def normal_sample(mean, std, size, min_val=None, max_val=None):
     if std == 0:
-        return constant_sample(mn, size)
+        return constant_sample(mean, size)
     s = np.random.normal(mean, std, size)
-    return np.clip(s, mn, mx)
+    if min_val is not None and max_val is not None:
+        return np.clip(s, min_val, max_val)
+    return s
 
 def uniform_sample(mn, mx, size):
     if mn == mx:
@@ -90,59 +87,61 @@ def pert_sample(mn, md, mx, size):
         return constant_sample(mn, size)
     alpha = 1 + 4 * (md - mn) / (mx - mn)
     beta = 1 + 4 * (mx - md) / (mx - mn)
-    # تجنب القسمة على صفر
     if alpha <= 0 or beta <= 0:
         return constant_sample((mn + md + mx) / 3, size)
     b = np.random.beta(alpha, beta, size)
     return mn + b * (mx - mn)
 
-def gen_sample(dist, mn, md, mx, size):
-    # معالجة الحالة الثابتة أولاً
-    if mn == md == mx:
-        return constant_sample(mn, size)
-    
-    if dist == "Triangular":
-        return triangular_sample(mn, md, mx, size)
-    elif dist == "Normal":
-        return normal_sample(mn, md, mx, size)
+def gen_sample(dist, p1, p2, p3, size, min_val=None, max_val=None):
+    """
+    توليد عينات حسب التوزيع المختار.
+    - Normal: p1=mean, p2=std_dev, p3=ignored (يمكن استخدام min_val, max_val للتقليم)
+    - البقية: p1=min, p2=med, p3=max
+    """
+    if dist == "Normal":
+        return normal_sample(p1, p2, size, min_val, max_val)
+    elif dist == "Triangular":
+        return triangular_sample(p1, p2, p3, size)
     elif dist == "Uniform":
-        return uniform_sample(mn, mx, size)
+        return uniform_sample(p1, p3, size)  # p2 (med) غير مستخدم
     elif dist == "Lognormal":
-        return lognormal_sample(mn, md, mx, size)
+        return lognormal_sample(p1, p2, p3, size)
     elif dist == "PERT":
-        return pert_sample(mn, md, mx, size)
+        return pert_sample(p1, p2, p3, size)
     else:
-        return triangular_sample(mn, md, mx, size)
+        return triangular_sample(p1, p2, p3, size)
 
 # ========== التحقق ==========
-def validate_inputs(vol_mn, vol_md, vol_mx, ntg_mn, ntg_md, ntg_mx,
-                    por_mn, por_md, por_mx, sw_mn, sw_md, sw_mx,
-                    rf_mn, rf_md, rf_mx, boi_mn, boi_md, boi_mx):
+def validate_inputs(dist_list, p1_list, p2_list, p3_list, param_names, limits):
     valid = True
-    for name, mn, md, mx in [("Volume", vol_mn, vol_md, vol_mx),
-                             ("Boi", boi_mn, boi_md, boi_mx)]:
-        if mn <= 0 or md <= 0 or mx <= 0:
-            st.error(f"{name}: all values must be > 0")
-            valid = False
-    for name, mn, md, mx in [("NTG", ntg_mn, ntg_md, ntg_mx),
-                             ("φ (Porosity)", por_mn, por_md, por_mx),
-                             ("Sw", sw_mn, sw_md, sw_mx),
-                             ("RF", rf_mn, rf_md, rf_mx)]:
-        if not (0 <= mn <= 1 and 0 <= md <= 1 and 0 <= mx <= 1):
-            st.error(f"{name}: all values between 0 and 1")
-            valid = False
-    # تحذير فقط إذا كانت القيم خارج الترتيب (وليس منع التشغيل)
-    for name, mn, md, mx in [("Volume", vol_mn, vol_md, vol_mx),
-                             ("NTG", ntg_mn, ntg_md, ntg_mx),
-                             ("φ", por_mn, por_md, por_mx),
-                             ("Sw", sw_mn, sw_md, sw_mx),
-                             ("RF", rf_mn, rf_md, rf_mx),
-                             ("Boi", boi_mn, boi_md, boi_mx)]:
-        if not (mn <= md <= mx):
-            st.warning(f"{name}: Min ≤ Med ≤ Max not satisfied (will still run)")
+    for i, name in enumerate(param_names):
+        dist = dist_list[i]
+        if dist == "Normal":
+            # التحقق من أن Std Dev >= 0
+            if p2_list[i] < 0:
+                st.error(f"{name}: Standard Deviation must be >= 0")
+                valid = False
+            # التحقق من الحدود إن وجدت
+            if limits[i] is not None:
+                mn, mx = limits[i]
+                if p1_list[i] < mn or p1_list[i] > mx:
+                    st.warning(f"{name}: Mean is outside recommended range [{mn}, {mx}]")
+        else:
+            # التحقق من القيم >0 للمتغيرات الحجمية
+            if name in ["Volume", "Boi"] and (p1_list[i] <= 0 or p2_list[i] <= 0 or p3_list[i] <= 0):
+                st.error(f"{name}: all values must be > 0")
+                valid = False
+            # التحقق من النطاق 0-1 للمتغيرات النسبية
+            if name in ["NTG", "φ", "Sw", "RF"]:
+                if not (0 <= p1_list[i] <= 1 and 0 <= p2_list[i] <= 1 and 0 <= p3_list[i] <= 1):
+                    st.error(f"{name}: all values between 0 and 1")
+                    valid = False
+            # التحقق من الترتيب Min ≤ Med ≤ Max
+            if not (p1_list[i] <= p2_list[i] <= p3_list[i]):
+                st.warning(f"{name}: Min ≤ Med ≤ Max not satisfied (will still run)")
     return valid
 
-# ========== CSS ديناميكي مع تحسين الكروت ==========
+# ========== CSS ديناميكي ==========
 def apply_base_css(is_dark):
     if is_dark:
         bg = "#0a0e1a"
@@ -224,13 +223,34 @@ def apply_base_css(is_dark):
 # ========== تنفيذ المحاكاة ==========
 def run_simulation():
     np.random.seed(42)
-    volume_m3 = gen_sample(vol_dist, vol_min, vol_med, vol_max, iterations)
+    
+    # تجميع المدخلات مع التوزيعات
+    params = [
+        ("Volume", vol_dist, vol_p1, vol_p2, vol_p3, None),
+        ("NTG", ntg_dist, ntg_p1, ntg_p2, ntg_p3, (0, 1)),
+        ("φ", por_dist, por_p1, por_p2, por_p3, (0, 1)),
+        ("Sw", sw_dist, sw_p1, sw_p2, sw_p3, (0, 1)),
+        ("RF", rf_dist, rf_p1, rf_p2, rf_p3, (0, 1)),
+        ("Boi", boi_dist, boi_p1, boi_p2, boi_p3, None)
+    ]
+    
+    results = {}
+    for name, dist, p1, p2, p3, limits in params:
+        if dist == "Normal":
+            # Normal: p1=mean, p2=std_dev
+            results[name] = gen_sample(dist, p1, p2, 0, iterations, 
+                                      limits[0] if limits else None,
+                                      limits[1] if limits else None)
+        else:
+            results[name] = gen_sample(dist, p1, p2, p3, iterations)
+    
+    volume_m3 = results["Volume"]
     volume_acft = volume_m3 * 0.0008107132
-    ntg = gen_sample(ntg_dist, ntg_min, ntg_med, ntg_max, iterations)
-    por = gen_sample(por_dist, por_min, por_med, por_max, iterations)
-    sw = gen_sample(sw_dist, sw_min, sw_med, sw_max, iterations)
-    rf = gen_sample(rf_dist, rf_min, rf_med, rf_max, iterations)
-    boi = gen_sample(boi_dist, boi_min, boi_med, boi_max, iterations)
+    ntg = results["NTG"]
+    por = results["φ"]
+    sw = results["Sw"]
+    rf = results["RF"]
+    boi = results["Boi"]
 
     ooip = (7758 * volume_acft * ntg * por * (1 - sw)) / boi
     rec = ooip * rf / 1e6
@@ -252,7 +272,7 @@ def run_simulation():
     st.session_state.volume = volume_m3
     st.session_state.data_stored = True
 
-# ========== واجهة الإدخال ==========
+# ========== واجهة الإدخال الديناميكية ==========
 apply_base_css(st.session_state.dark_mode)
 
 st.markdown("# 🛢️ Professional Volumetric Risk Analysis")
@@ -260,62 +280,89 @@ st.markdown("### <span style='color:#c0392b; font-weight:bold;'>Monte Carlo Simu
 
 dist_options = ["Triangular", "Normal", "Uniform", "Lognormal", "PERT"]
 
-col1, col2, col3, col4, col5, col6 = st.columns(6)
+def create_param_columns():
+    """إنشاء أعمدة المدخلات مع تغيير ديناميكي حسب التوزيع"""
+    cols = st.columns(6)
+    param_data = {}
+    
+    # قائمة المتغيرات مع إعداداتها
+    param_configs = [
+        ("🗻 Volume", "vol", 70_000_000.0, 80_576_000.0, 90_000_000.0, 10000.0, 1_000_000.0, None, None),
+        ("📊 NTG", "ntg", 0.17, 0.30, 0.42, 0.0, 0.01, 0.0, 1.0),
+        ("🧫 φ", "por", 0.09, 0.12, 0.18, 0.0, 0.01, 0.0, 1.0),
+        ("💧 Sw", "sw", 0.30, 0.40, 0.48, 0.0, 0.01, 0.0, 1.0),
+        ("📈 RF", "rf", 0.16, 0.18, 0.22, 0.0, 0.01, 0.0, 1.0),
+        ("⚙️ Boi", "boi", 1.15, 1.20, 1.28, 0.01, 0.01, None, None)
+    ]
+    
+    for i, (label, key, default_min, default_med, default_max, min_val, step, lim_min, lim_max) in enumerate(param_configs):
+        with cols[i]:
+            st.subheader(label)
+            dist_key = f"{key}_dist"
+            dist = st.selectbox("Dist", dist_options, key=dist_key)
+            
+            if dist == "Normal":
+                # عرض Mean و Std Dev
+                p1 = st.number_input("Mean", value=default_med, min_value=lim_min if lim_min is not None else -np.inf, 
+                                    max_value=lim_max if lim_max is not None else np.inf, step=step, key=f"{key}_p1")
+                p2 = st.number_input("Std Dev", value=(default_max - default_min) / 4, min_value=0.0, 
+                                    step=step, key=f"{key}_p2")
+                p3 = None  # غير مستخدم
+            else:
+                # عرض Min, Med, Max
+                p1 = st.number_input("Min", value=default_min, min_value=lim_min if lim_min is not None else 0.0, 
+                                    max_value=lim_max if lim_max is not None else np.inf, step=step, key=f"{key}_p1")
+                p2 = st.number_input("Med", value=default_med, min_value=lim_min if lim_min is not None else 0.0, 
+                                    max_value=lim_max if lim_max is not None else np.inf, step=step, key=f"{key}_p2")
+                p3 = st.number_input("Max", value=default_max, min_value=lim_min if lim_min is not None else 0.0, 
+                                    max_value=lim_max if lim_max is not None else np.inf, step=step, key=f"{key}_p3")
+            
+            # تخزين البيانات
+            param_data[f"{key}_dist"] = dist
+            param_data[f"{key}_p1"] = p1
+            param_data[f"{key}_p2"] = p2
+            param_data[f"{key}_p3"] = p3 if p3 is not None else 0
+    
+    return param_data
 
-with col1:
-    st.subheader("🗻 Volume")
-    vol_min = st.number_input("Min (m³)", value=70_000_000.0, min_value=10000.0, step=1_000_000.0, key="vol_min")
-    vol_med = st.number_input("Med (m³)", value=80_576_000.0, min_value=10000.0, step=1_000_000.0, key="vol_med")
-    vol_max = st.number_input("Max (m³)", value=90_000_000.0, min_value=10000.0, step=1_000_000.0, key="vol_max")
-    vol_dist = st.selectbox("Dist", dist_options, key="vol_dist")
+# ========== استدعاء واجهة الإدخال ==========
+param_data = create_param_columns()
 
-with col2:
-    st.subheader("📊 NTG")
-    ntg_min = st.number_input("Min", value=0.17, min_value=0.0, max_value=1.0, step=0.01, key="ntg_min")
-    ntg_med = st.number_input("Med", value=0.30, min_value=0.0, max_value=1.0, step=0.01, key="ntg_med")
-    ntg_max = st.number_input("Max", value=0.42, min_value=0.0, max_value=1.0, step=0.01, key="ntg_max")
-    ntg_dist = st.selectbox("Dist", dist_options, key="ntg_dist")
+# استخراج القيم من param_data
+vol_dist = param_data["vol_dist"]
+vol_p1, vol_p2, vol_p3 = param_data["vol_p1"], param_data["vol_p2"], param_data["vol_p3"]
 
-with col3:
-    st.subheader("🧫 φ")
-    por_min = st.number_input("Min", value=0.09, min_value=0.0, max_value=1.0, step=0.01, key="por_min")
-    por_med = st.number_input("Med", value=0.12, min_value=0.0, max_value=1.0, step=0.01, key="por_med")
-    por_max = st.number_input("Max", value=0.18, min_value=0.0, max_value=1.0, step=0.01, key="por_max")
-    por_dist = st.selectbox("Dist", dist_options, key="por_dist")
+ntg_dist = param_data["ntg_dist"]
+ntg_p1, ntg_p2, ntg_p3 = param_data["ntg_p1"], param_data["ntg_p2"], param_data["ntg_p3"]
 
-with col4:
-    st.subheader("💧 Sw")
-    sw_min = st.number_input("Min", value=0.30, min_value=0.0, max_value=1.0, step=0.01, key="sw_min")
-    sw_med = st.number_input("Med", value=0.40, min_value=0.0, max_value=1.0, step=0.01, key="sw_med")
-    sw_max = st.number_input("Max", value=0.48, min_value=0.0, max_value=1.0, step=0.01, key="sw_max")
-    sw_dist = st.selectbox("Dist", dist_options, key="sw_dist")
+por_dist = param_data["por_dist"]
+por_p1, por_p2, por_p3 = param_data["por_p1"], param_data["por_p2"], param_data["por_p3"]
 
-with col5:
-    st.subheader("📈 RF")
-    rf_min = st.number_input("Min", value=0.16, min_value=0.0, max_value=1.0, step=0.01, key="rf_min")
-    rf_med = st.number_input("Med", value=0.18, min_value=0.0, max_value=1.0, step=0.01, key="rf_med")
-    rf_max = st.number_input("Max", value=0.22, min_value=0.0, max_value=1.0, step=0.01, key="rf_max")
-    rf_dist = st.selectbox("Dist", dist_options, key="rf_dist")
+sw_dist = param_data["sw_dist"]
+sw_p1, sw_p2, sw_p3 = param_data["sw_p1"], param_data["sw_p2"], param_data["sw_p3"]
 
-with col6:
-    st.subheader("⚙️ Boi")
-    boi_min = st.number_input("Min", value=1.15, min_value=0.01, step=0.01, key="boi_min")
-    boi_med = st.number_input("Med", value=1.20, min_value=0.01, step=0.01, key="boi_med")
-    boi_max = st.number_input("Max", value=1.28, min_value=0.01, step=0.01, key="boi_max")
-    boi_dist = st.selectbox("Dist", dist_options, key="boi_dist")
+rf_dist = param_data["rf_dist"]
+rf_p1, rf_p2, rf_p3 = param_data["rf_p1"], param_data["rf_p2"], param_data["rf_p3"]
 
+boi_dist = param_data["boi_dist"]
+boi_p1, boi_p2, boi_p3 = param_data["boi_p1"], param_data["boi_p2"], param_data["boi_p3"]
+
+# ========== زر التشغيل مع التحقق ==========
 if st.button("🚀 Run Simulation", type="primary", use_container_width=True):
-    if validate_inputs(vol_min, vol_med, vol_max,
-                       ntg_min, ntg_med, ntg_max,
-                       por_min, por_med, por_max,
-                       sw_min, sw_med, sw_max,
-                       rf_min, rf_med, rf_max,
-                       boi_min, boi_med, boi_max):
+    # تجميع قيم المدخلات للتحقق
+    dist_list = [vol_dist, ntg_dist, por_dist, sw_dist, rf_dist, boi_dist]
+    p1_list = [vol_p1, ntg_p1, por_p1, sw_p1, rf_p1, boi_p1]
+    p2_list = [vol_p2, ntg_p2, por_p2, sw_p2, rf_p2, boi_p2]
+    p3_list = [vol_p3, ntg_p3, por_p3, sw_p3, rf_p3, boi_p3]
+    param_names = ["Volume", "NTG", "φ", "Sw", "RF", "Boi"]
+    limits = [None, (0,1), (0,1), (0,1), (0,1), None]
+    
+    if validate_inputs(dist_list, p1_list, p2_list, p3_list, param_names, limits):
         run_simulation()
     else:
         st.error("Please fix input errors.")
 
-# ========== عرض النتائج ==========
+# ========== عرض النتائج (نفس الكود السابق) ==========
 if st.session_state.data_stored:
     rec = st.session_state.rec_mm
     p90, p50, p10 = st.session_state.p90, st.session_state.p50, st.session_state.p10
@@ -329,6 +376,7 @@ if st.session_state.data_stored:
     template = "plotly_dark" if is_dark else "plotly_white"
     apply_base_css(is_dark)
 
+    # عرض الكروت
     st.subheader("📊 Recoverable Oil (MMSTB)")
     cola, colb, colc, cold = st.columns(4)
     cola.metric("P90 (Conservative)", f"{p90:.2f}")
@@ -341,7 +389,7 @@ if st.session_state.data_stored:
     colg.metric("Skewness", f"{sk:.3f}")
     colh.metric("VaR 95%", f"{v95:.2f}")
 
-    # الرسوم البيانية
+    # الرسوم البيانية (مثل السابق)
     if np.std(rec) == 0:
         rec_kde = rec + np.random.normal(0, 1e-6, len(rec))
     else:
@@ -379,7 +427,6 @@ if st.session_state.data_stored:
     fig3.update_layout(title="3. Exceedance Probability", template=template, height=500)
     st.plotly_chart(fig3, use_container_width=True)
 
-    # Heatmap (مع التسميات الجديدة)
     df_corr = pd.DataFrame({'Volume': vol, 'NTG': ntg, 'φ': por, 'Sw': sw, 'RF': rf, 'Boi': boi})
     corr_mat = df_corr.corr(method='spearman')
     fig4 = px.imshow(corr_mat, text_auto=True, aspect="auto", color_continuous_scale=st.session_state.heatmap_colorscale, zmin=-1, zmax=1, title="4. Spearman Correlation Heatmap")
@@ -408,78 +455,93 @@ if st.session_state.data_stored:
 
     # ========== تصدير التقرير ==========
     st.markdown("---")
-st.subheader("📄 Export Report")
+    st.subheader("📄 Export Report")
 
-# جدول المدخلات (كما هو)
-input_data = {
-    "Parameter": ["Volume (m³)", "NTG", "φ (Porosity)", "Sw", "RF", "Boi"],
-    "Min": [f"{vol_min:,.0f}", f"{ntg_min:.2f}", f"{por_min:.2f}", f"{sw_min:.2f}", f"{rf_min:.2f}", f"{boi_min:.2f}"],
-    "Med": [f"{vol_med:,.0f}", f"{ntg_med:.2f}", f"{por_med:.2f}", f"{sw_med:.2f}", f"{rf_med:.2f}", f"{boi_med:.2f}"],
-    "Max": [f"{vol_max:,.0f}", f"{ntg_max:.2f}", f"{por_max:.2f}", f"{sw_max:.2f}", f"{rf_max:.2f}", f"{boi_max:.2f}"],
-    "Distribution": [vol_dist, ntg_dist, por_dist, sw_dist, rf_dist, boi_dist]
-}
-input_df = pd.DataFrame(input_data)
-csv_input = input_df.to_csv(index=False)
-st.download_button("📋 Download Input Parameters CSV", csv_input, "input_parameters.csv", "text/csv", use_container_width=True)
+    # جمع قيم المدخلات الحالية للجدول
+    def get_display_values(dist, p1, p2, p3):
+        if dist == "Normal":
+            return f"{p1:.3f}", f"{p2:.3f}", "—"
+        else:
+            return f"{p1:.3f}", f"{p2:.3f}", f"{p3:.3f}"
 
-html_figs = [fig.to_html(full_html=False, include_plotlyjs='cdn') for fig in [fig1, fig2, fig3, fig4, fig5, fig6]]
+    vol_mn, vol_md, vol_mx = get_display_values(vol_dist, vol_p1, vol_p2, vol_p3)
+    ntg_mn, ntg_md, ntg_mx = get_display_values(ntg_dist, ntg_p1, ntg_p2, ntg_p3)
+    por_mn, por_md, por_mx = get_display_values(por_dist, por_p1, por_p2, por_p3)
+    sw_mn, sw_md, sw_mx = get_display_values(sw_dist, sw_p1, sw_p2, sw_p3)
+    rf_mn, rf_md, rf_mx = get_display_values(rf_dist, rf_p1, rf_p2, rf_p3)
+    boi_mn, boi_md, boi_mx = get_display_values(boi_dist, boi_p1, boi_p2, boi_p3)
 
-# تحديد ألوان التقرير بناءً على الثيم الحالي
-if is_dark:
-    report_bg = "#0a0e1a"
-    report_text = "#e0e4f0"
-    report_card_bg = "#131a2c"
-    accent_color = "#ffb347"
-    border_color = "#2a3a50"
-    th_bg = "#1a2a3a"
+    input_data = {
+        "Parameter": ["Volume (m³)", "NTG", "φ (Porosity)", "Sw", "RF", "Boi"],
+        "Min": [vol_mn, ntg_mn, por_mn, sw_mn, rf_mn, boi_mn],
+        "Med": [vol_md, ntg_md, por_md, sw_md, rf_md, boi_md],
+        "Max": [vol_mx, ntg_mx, por_mx, sw_mx, rf_mx, boi_mx],
+        "Distribution": [vol_dist, ntg_dist, por_dist, sw_dist, rf_dist, boi_dist]
+    }
+    input_df = pd.DataFrame(input_data)
+    csv_input = input_df.to_csv(index=False)
+    st.download_button("📋 Download Input Parameters CSV", csv_input, "input_parameters.csv", "text/csv", use_container_width=True)
+
+    html_figs = [fig.to_html(full_html=False, include_plotlyjs='cdn') for fig in [fig1, fig2, fig3, fig4, fig5, fig6]]
+    
+    if is_dark:
+        report_bg = "#0a0e1a"
+        report_text = "#e0e4f0"
+        report_card_bg = "#131a2c"
+        accent_color = "#ffb347"
+        border_color = "#2a3a50"
+        th_bg = "#1a2a3a"
+    else:
+        report_bg = "#ffffff"
+        report_text = "#1a1a2e"
+        report_card_bg = "#f8f9fa"
+        accent_color = "#e67e22"
+        border_color = "#ced4da"
+        th_bg = "#f0f0f0"
+
+    report_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="UTF-8"><title>Volumetric Risk Report</title>
+    <style>
+        body {{ background-color: {report_bg}; color: {report_text}; font-family: Arial, sans-serif; padding: 2rem; }}
+        h1, h2, h3 {{ color: {accent_color}; }}
+        .stats {{ display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; }}
+        .stat {{ background-color: {report_card_bg}; border-radius: 10px; padding: 0.8rem; min-width: 120px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border: 1px solid {border_color}; }}
+        .stat span {{ color: {accent_color}; font-weight: bold; }}
+        table {{ width: 100%; border-collapse: collapse; margin: 1rem 0; background-color: {report_card_bg}; }}
+        th, td {{ border: 1px solid {border_color}; padding: 8px; text-align: center; }}
+        th {{ background-color: {th_bg}; color: {accent_color}; }}
+        a, button {{ background-color: {accent_color}; color: #1a1a2e; padding: 6px 12px; border-radius: 20px; text-decoration: none; display: inline-block; margin: 5px 0; }}
+    </style>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    </head>
+    <body>
+        <h1>🛢️ Volumetric Risk Analysis Report</h1>
+        <p>Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')} | Iterations: {iterations}</p>
+        <h2>Input Parameters</h2>
+        {input_df.to_html(index=False)}
+        <p><em>You can copy the table above or <a href="data:text/csv;charset=utf-8,{csv_input}" download="input_parameters.csv">click here to download CSV</a></em></p>
+        <h2>Recoverable Oil Statistics (MMSTB)</h2>
+        <div class="stats">
+            <div class="stat">P90: {p90:.2f}</div>
+            <div class="stat">P50: {p50:.2f}</div>
+            <div class="stat">P10: {p10:.2f}</div>
+            <div class="stat">Mean: {mn:.2f}</div>
+            <div class="stat">Std Dev: {sd:.2f}</div>
+            <div class="stat">CV: {cv:.3f}</div>
+            <div class="stat">Skewness: {sk:.3f}</div>
+            <div class="stat">VaR 95%: {v95:.2f}</div>
+        </div>
+        <h2>Charts</h2>
+        {''.join(html_figs)}
+        <footer><hr><p>Report generated by Streamlit Volumetric Risk Analysis Tool - Eman Ahmed</p></footer>
+    </body>
+    </html>
+    """
+    st.download_button("📑 Download Report (HTML)", report_html, "report.html", "text/html", use_container_width=True)
+    csv_data = pd.DataFrame({"Recoverable (MMSTB)": rec}).to_csv(index=False)
+    st.download_button("📊 Download CSV", csv_data, "results.csv", "text/csv")
 else:
-    report_bg = "#ffffff"
-    report_text = "#1a1a2e"
-    report_card_bg = "#f8f9fa"
-    accent_color = "#e67e22"
-    border_color = "#ced4da"
-    th_bg = "#f0f0f0"
-
-report_html = f"""
-<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"><title>Volumetric Risk Report</title>
-<style>
-    body {{ background-color: {report_bg}; color: {report_text}; font-family: Arial, sans-serif; padding: 2rem; }}
-    h1, h2, h3 {{ color: {accent_color}; }}
-    .stats {{ display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; }}
-    .stat {{ background-color: {report_card_bg}; border-radius: 10px; padding: 0.8rem; min-width: 120px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border: 1px solid {border_color}; }}
-    .stat span {{ color: {accent_color}; font-weight: bold; }}
-    table {{ width: 100%; border-collapse: collapse; margin: 1rem 0; background-color: {report_card_bg}; }}
-    th, td {{ border: 1px solid {border_color}; padding: 8px; text-align: center; }}
-    th {{ background-color: {th_bg}; color: {accent_color}; }}
-    a, button {{ background-color: {accent_color}; color: #1a1a2e; padding: 6px 12px; border-radius: 20px; text-decoration: none; display: inline-block; margin: 5px 0; }}
-</style>
-<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-</head>
-<body>
-    <h1>🛢️ Volumetric Risk Analysis Report</h1>
-    <p>Generated: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')} | Iterations: {iterations}</p>
-    <h2>Input Parameters</h2>
-    {input_df.to_html(index=False)}
-    <p><em>You can copy the table above or <a href="data:text/csv;charset=utf-8,{csv_input}" download="input_parameters.csv">click here to download CSV</a></em></p>
-    <h2>Recoverable Oil Statistics (MMSTB)</h2>
-    <div class="stats">
-        <div class="stat">P90: {p90:.2f}</div>
-        <div class="stat">P50: {p50:.2f}</div>
-        <div class="stat">P10: {p10:.2f}</div>
-        <div class="stat">Mean: {mn:.2f}</div>
-        <div class="stat">Std Dev: {sd:.2f}</div>
-        <div class="stat">CV: {cv:.3f}</div>
-        <div class="stat">Skewness: {sk:.3f}</div>
-        <div class="stat">VaR 95%: {v95:.2f}</div>
-    </div>
-    <h2>Charts</h2>
-    {''.join(html_figs)}
-    <footer><hr><p>Report generated by Streamlit Volumetric Risk Analysis Tool - Eman Ahmed</p></footer>
-</body>
-</html>
-"""
-st.download_button("📑 Download Report (HTML)", report_html, "report.html", "text/html", use_container_width=True)
-csv_data = pd.DataFrame({"Recoverable (MMSTB)": rec}).to_csv(index=False)
-st.download_button("📊 Download CSV", csv_data, "results.csv", "text/csv")
+    apply_base_css(st.session_state.dark_mode)
+    st.info("👈 Set parameters and click 'Run Simulation' to start.")
