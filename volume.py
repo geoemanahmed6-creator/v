@@ -93,17 +93,12 @@ def pert_sample(mn, md, mx, size):
     return mn + b * (mx - mn)
 
 def gen_sample(dist, p1, p2, p3, size, min_val=None, max_val=None):
-    """
-    توليد عينات حسب التوزيع المختار.
-    - Normal: p1=mean, p2=std_dev, p3=ignored (يمكن استخدام min_val, max_val للتقليم)
-    - البقية: p1=min, p2=med, p3=max
-    """
     if dist == "Normal":
         return normal_sample(p1, p2, size, min_val, max_val)
     elif dist == "Triangular":
         return triangular_sample(p1, p2, p3, size)
     elif dist == "Uniform":
-        return uniform_sample(p1, p3, size)  # p2 (med) غير مستخدم
+        return uniform_sample(p1, p3, size)
     elif dist == "Lognormal":
         return lognormal_sample(p1, p2, p3, size)
     elif dist == "PERT":
@@ -117,26 +112,21 @@ def validate_inputs(dist_list, p1_list, p2_list, p3_list, param_names, limits):
     for i, name in enumerate(param_names):
         dist = dist_list[i]
         if dist == "Normal":
-            # التحقق من أن Std Dev >= 0
             if p2_list[i] < 0:
                 st.error(f"{name}: Standard Deviation must be >= 0")
                 valid = False
-            # التحقق من الحدود إن وجدت
             if limits[i] is not None:
                 mn, mx = limits[i]
                 if p1_list[i] < mn or p1_list[i] > mx:
                     st.warning(f"{name}: Mean is outside recommended range [{mn}, {mx}]")
         else:
-            # التحقق من القيم >0 للمتغيرات الحجمية
             if name in ["Volume", "Boi"] and (p1_list[i] <= 0 or p2_list[i] <= 0 or p3_list[i] <= 0):
                 st.error(f"{name}: all values must be > 0")
                 valid = False
-            # التحقق من النطاق 0-1 للمتغيرات النسبية
             if name in ["NTG", "φ", "Sw", "RF"]:
                 if not (0 <= p1_list[i] <= 1 and 0 <= p2_list[i] <= 1 and 0 <= p3_list[i] <= 1):
                     st.error(f"{name}: all values between 0 and 1")
                     valid = False
-            # التحقق من الترتيب Min ≤ Med ≤ Max
             if not (p1_list[i] <= p2_list[i] <= p3_list[i]):
                 st.warning(f"{name}: Min ≤ Med ≤ Max not satisfied (will still run)")
     return valid
@@ -224,7 +214,6 @@ def apply_base_css(is_dark):
 def run_simulation():
     np.random.seed(42)
     
-    # تجميع المدخلات مع التوزيعات
     params = [
         ("Volume", vol_dist, vol_p1, vol_p2, vol_p3, None),
         ("NTG", ntg_dist, ntg_p1, ntg_p2, ntg_p3, (0, 1)),
@@ -237,7 +226,6 @@ def run_simulation():
     results = {}
     for name, dist, p1, p2, p3, limits in params:
         if dist == "Normal":
-            # Normal: p1=mean, p2=std_dev
             results[name] = gen_sample(dist, p1, p2, 0, iterations, 
                                       limits[0] if limits else None,
                                       limits[1] if limits else None)
@@ -272,7 +260,7 @@ def run_simulation():
     st.session_state.volume = volume_m3
     st.session_state.data_stored = True
 
-# ========== واجهة الإدخال الديناميكية ==========
+# ========== واجهة الإدخال الديناميكية (مع إصلاح الأخطاء) ==========
 apply_base_css(st.session_state.dark_mode)
 
 st.markdown("# 🛢️ Professional Volumetric Risk Analysis")
@@ -303,21 +291,49 @@ def create_param_columns():
             
             if dist == "Normal":
                 # عرض Mean و Std Dev
-                p1 = st.number_input("Mean", value=default_med, min_value=lim_min if lim_min is not None else -np.inf, 
-                                    max_value=lim_max if lim_max is not None else np.inf, step=step, key=f"{key}_p1")
-                p2 = st.number_input("Std Dev", value=(default_max - default_min) / 4, min_value=0.0, 
-                                    step=step, key=f"{key}_p2")
+                p1 = st.number_input(
+                    "Mean", 
+                    value=default_med,
+                    min_value=lim_min if lim_min is not None else 0.0,
+                    max_value=lim_max if lim_max is not None else 1e15,
+                    step=step,
+                    key=f"{key}_p1"
+                )
+                p2 = st.number_input(
+                    "Std Dev",
+                    value=(default_max - default_min) / 4,
+                    min_value=0.0,
+                    step=step,
+                    key=f"{key}_p2"
+                )
                 p3 = None  # غير مستخدم
             else:
                 # عرض Min, Med, Max
-                p1 = st.number_input("Min", value=default_min, min_value=lim_min if lim_min is not None else 0.0, 
-                                    max_value=lim_max if lim_max is not None else np.inf, step=step, key=f"{key}_p1")
-                p2 = st.number_input("Med", value=default_med, min_value=lim_min if lim_min is not None else 0.0, 
-                                    max_value=lim_max if lim_max is not None else np.inf, step=step, key=f"{key}_p2")
-                p3 = st.number_input("Max", value=default_max, min_value=lim_min if lim_min is not None else 0.0, 
-                                    max_value=lim_max if lim_max is not None else np.inf, step=step, key=f"{key}_p3")
+                p1 = st.number_input(
+                    "Min",
+                    value=default_min,
+                    min_value=lim_min if lim_min is not None else 0.0,
+                    max_value=lim_max if lim_max is not None else 1e15,
+                    step=step,
+                    key=f"{key}_p1"
+                )
+                p2 = st.number_input(
+                    "Med",
+                    value=default_med,
+                    min_value=lim_min if lim_min is not None else 0.0,
+                    max_value=lim_max if lim_max is not None else 1e15,
+                    step=step,
+                    key=f"{key}_p2"
+                )
+                p3 = st.number_input(
+                    "Max",
+                    value=default_max,
+                    min_value=lim_min if lim_min is not None else 0.0,
+                    max_value=lim_max if lim_max is not None else 1e15,
+                    step=step,
+                    key=f"{key}_p3"
+                )
             
-            # تخزين البيانات
             param_data[f"{key}_dist"] = dist
             param_data[f"{key}_p1"] = p1
             param_data[f"{key}_p2"] = p2
@@ -325,10 +341,8 @@ def create_param_columns():
     
     return param_data
 
-# ========== استدعاء واجهة الإدخال ==========
 param_data = create_param_columns()
 
-# استخراج القيم من param_data
 vol_dist = param_data["vol_dist"]
 vol_p1, vol_p2, vol_p3 = param_data["vol_p1"], param_data["vol_p2"], param_data["vol_p3"]
 
@@ -347,9 +361,7 @@ rf_p1, rf_p2, rf_p3 = param_data["rf_p1"], param_data["rf_p2"], param_data["rf_p
 boi_dist = param_data["boi_dist"]
 boi_p1, boi_p2, boi_p3 = param_data["boi_p1"], param_data["boi_p2"], param_data["boi_p3"]
 
-# ========== زر التشغيل مع التحقق ==========
 if st.button("🚀 Run Simulation", type="primary", use_container_width=True):
-    # تجميع قيم المدخلات للتحقق
     dist_list = [vol_dist, ntg_dist, por_dist, sw_dist, rf_dist, boi_dist]
     p1_list = [vol_p1, ntg_p1, por_p1, sw_p1, rf_p1, boi_p1]
     p2_list = [vol_p2, ntg_p2, por_p2, sw_p2, rf_p2, boi_p2]
@@ -362,7 +374,7 @@ if st.button("🚀 Run Simulation", type="primary", use_container_width=True):
     else:
         st.error("Please fix input errors.")
 
-# ========== عرض النتائج (نفس الكود السابق) ==========
+# ========== عرض النتائج (كما هو) ==========
 if st.session_state.data_stored:
     rec = st.session_state.rec_mm
     p90, p50, p10 = st.session_state.p90, st.session_state.p50, st.session_state.p10
@@ -376,7 +388,6 @@ if st.session_state.data_stored:
     template = "plotly_dark" if is_dark else "plotly_white"
     apply_base_css(is_dark)
 
-    # عرض الكروت
     st.subheader("📊 Recoverable Oil (MMSTB)")
     cola, colb, colc, cold = st.columns(4)
     cola.metric("P90 (Conservative)", f"{p90:.2f}")
@@ -389,7 +400,7 @@ if st.session_state.data_stored:
     colg.metric("Skewness", f"{sk:.3f}")
     colh.metric("VaR 95%", f"{v95:.2f}")
 
-    # الرسوم البيانية (مثل السابق)
+    # الرسوم البيانية
     if np.std(rec) == 0:
         rec_kde = rec + np.random.normal(0, 1e-6, len(rec))
     else:
@@ -457,7 +468,6 @@ if st.session_state.data_stored:
     st.markdown("---")
     st.subheader("📄 Export Report")
 
-    # جمع قيم المدخلات الحالية للجدول
     def get_display_values(dist, p1, p2, p3):
         if dist == "Normal":
             return f"{p1:.3f}", f"{p2:.3f}", "—"
